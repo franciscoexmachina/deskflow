@@ -2,7 +2,7 @@
 // Persistent storage: localStorage (local cache) + Firebase Realtime Database (shared truth)
 
 // Firebase Realtime Database — set this to your project's database URL
-const FIREBASE_URL = 'https://deskflow-app-default-rtdb.firebaseio.com';
+const FIREBASE_URL = 'https://deskflow-app-default-rtdb.asia-southeast1.firebasedatabase.app';
 
 // Keys that are shared across all users (session is deliberately excluded)
 const CLOUD_KEYS = ['df_users', 'df_floors', 'df_desks', 'df_bookings', 'df_floor_layouts'];
