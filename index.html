@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeskFlow — Office Space Booking</title>
+  <meta name="description"
+    content="Book your office desk with ease. DeskFlow lets you claim desks, view floor maps, and manage your workspace schedule." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+
+  <!-- ===== LOGIN SCREEN ===== -->
+  <div id="login-screen" class="screen active">
+    <div class="login-bg">
+      <div class="login-orb orb1"></div>
+      <div class="login-orb orb2"></div>
+      <div class="login-orb orb3"></div>
+    </div>
+    <div class="login-card">
+      <div class="login-logo">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <rect width="40" height="40" rx="12" fill="url(#logoGrad)" />
+          <rect x="8" y="22" width="8" height="10" rx="2" fill="white" opacity="0.9" />
+          <rect x="20" y="14" width="8" height="18" rx="2" fill="white" opacity="0.9" />
+          <rect x="8" y="10" width="8" height="8" rx="2" fill="white" opacity="0.5" />
+          <defs>
+            <linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
+              <stop offset="0%" stop-color="#6366f1" />
+              <stop offset="100%" stop-color="#8b5cf6" />
+            </linearGradient>
+          </defs>
+        </svg>
+        <span>DeskFlow</span>
+      </div>
+      <h1>Welcome back</h1>
+      <p class="login-sub">Sign in to book your workspace</p>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="field-group">
+          <label for="login-username">Username</label>
+          <input type="text" id="login-username" placeholder="Enter your username" autocomplete="username" required />
+        </div>
+        <div class="field-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password"
+            required />
+        </div>
+        <div id="login-error" class="error-msg hidden">Invalid username or password</div>
+        <button type="submit" class="btn-primary btn-full">Sign In</button>
+      </form>
+      <div class="login-hint">
+        <span>Demo</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MAIN APP ===== -->
+  <div id="app-screen" class="screen hidden">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="login-logo">
+          <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
+            <rect width="40" height="40" rx="12" fill="url(#logoGrad2)" />
+            <rect x="8" y="22" width="8" height="10" rx="2" fill="white" opacity="0.9" />
+            <rect x="20" y="14" width="8" height="18" rx="2" fill="white" opacity="0.9" />
+            <rect x="8" y="10" width="8" height="8" rx="2" fill="white" opacity="0.5" />
+            <defs>
+              <linearGradient id="logoGrad2" x1="0" y1="0" x2="40" y2="40">
+                <stop offset="0%" stop-color="#6366f1" />
+                <stop offset="100%" stop-color="#8b5cf6" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span>DeskFlow</span>
+        </div>
+        <button class="sidebar-close" id="sidebar-close" onclick="toggleSidebar()" aria-label="Close sidebar">✕</button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" id="nav-floor" onclick="switchView('floor')" aria-label="Floor Map">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          Floor Map
+        </button>
+        <button class="nav-item" id="nav-calendar" onclick="switchView('calendar')" aria-label="Calendar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          Calendar
+        </button>
+        <button class="nav-item" id="nav-mybookings" onclick="switchView('mybookings')" aria-label="My Bookings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+          </svg>
+          My Bookings
+        </button>
+        <div class="nav-divider" id="admin-nav-divider" style="display:none"></div>
+        <button class="nav-item admin-only hidden" id="nav-admin" onclick="switchView('admin')"
+          aria-label="Admin Panel">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M20 21a8 8 0 1 0-16 0" />
+            <circle cx="19" cy="18" r="3" />
+            <line x1="19" y1="15" x2="19" y2="17" />
+            <line x1="19" y1="19" x2="19" y2="21" />
+          </svg>
+          Admin Panel
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-badge" id="user-badge">
+          <div class="user-avatar" id="user-avatar-sidebar"></div>
+          <div class="user-info">
+            <span class="user-name" id="user-name-sidebar"></span>
+            <span class="user-role" id="user-role-sidebar"></span>
+          </div>
+        </div>
+        <button class="btn-ghost btn-sm" onclick="logout()" aria-label="Sign out">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          Sign Out
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+      <header class="topbar">
+        <button class="topbar-menu" onclick="toggleSidebar()" aria-label="Toggle menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <h2 class="topbar-title" id="topbar-title">Floor Map</h2>
+        <div class="topbar-actions" id="topbar-actions"></div>
+      </header>
+
+      <!-- FLOOR MAP VIEW -->
+      <div class="view active" id="view-floor">
+        <div class="floor-controls">
+          <div class="floor-tabs" id="floor-tabs"></div>
+          <div class="floor-legend">
+            <span class="legend-item"><span class="legend-dot available"></span>Available</span>
+            <span class="legend-item"><span class="legend-dot booked-user"></span>User Booked</span>
+            <span class="legend-item"><span class="legend-dot booked-admin"></span>Admin Booked</span>
+            <span class="legend-item"><span class="legend-dot mine"></span>My Desk</span>
+          </div>
+        </div>
+        <div class="floor-date-bar">
+          <span class="floor-date-label">Viewing:</span>
+          <div id="floor-selected-dates" class="floor-dates-display"></div>
+          <span id="filter-hint" class="filter-hint" style="display:none;"></span>
+          <button class="btn-ghost btn-sm" onclick="switchView('calendar')" id="change-dates-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            Change Dates
+          </button>
+        </div>
+        <div class="floor-canvas-wrap">
+          <div class="floor-canvas" id="floor-canvas"></div>
+        </div>
+      </div>
+
+      <!-- CALENDAR VIEW -->
+      <div class="view hidden" id="view-calendar">
+        <div class="calendar-container">
+          <div class="calendar-header">
+            <button class="btn-ghost btn-icon" onclick="prevMonth()" aria-label="Previous month">‹</button>
+            <h3 id="calendar-month-label"></h3>
+            <button class="btn-ghost btn-icon" onclick="nextMonth()" aria-label="Next month">›</button>
+          </div>
+          <div class="calendar-grid" id="calendar-grid"></div>
+          <div class="calendar-info" id="calendar-info"></div>
+          <div class="calendar-selection" id="calendar-selection">
+            <p id="selection-label">Select up to 2 days to book a desk</p>
+            <div id="selected-dates-chips"></div>
+            <div class="calendar-actions">
+              <button class="btn-secondary" onclick="clearDateSelection()">Clear</button>
+              <button class="btn-primary" onclick="goToFloorWithDates()" id="view-floor-btn" disabled>View Floor
+                Map</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MY BOOKINGS VIEW -->
+      <div class="view hidden" id="view-mybookings">
+        <div class="mybookings-container">
+          <h3>My Bookings</h3>
+          <div id="mybookings-list"></div>
+        </div>
+      </div>
+
+      <!-- ADMIN VIEW -->
+      <div class="view hidden" id="view-admin">
+        <div class="admin-container">
+          <div class="admin-tabs">
+            <button class="admin-tab active" onclick="switchAdminTab('users')" id="atab-users">Users</button>
+            <button class="admin-tab" onclick="switchAdminTab('bookings')" id="atab-bookings">All Bookings</button>
+            <button class="admin-tab" onclick="switchAdminTab('floors')" id="atab-floors">Floor Config</button>
+          </div>
+          <div class="admin-panel active" id="apanel-users">
+            <div class="admin-panel-header">
+              <h3>User Management</h3>
+              <button class="btn-primary btn-sm" onclick="openUserModal()">+ Add User</button>
+            </div>
+            <div id="users-table-wrap"></div>
+          </div>
+          <div class="admin-panel hidden" id="apanel-bookings">
+            <h3>All Bookings</h3>
+            <div id="all-bookings-list"></div>
+          </div>
+          <div class="admin-panel hidden" id="apanel-floors">
+            <h3>Floor Configuration</h3>
+            <div class="floor-config-form" id="floor-config-form"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ===== MODALS ===== -->
+  <div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal(event)">
+    <div class="modal" id="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Modal</h3>
+        <button class="modal-close" onclick="closeModalDirect()" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <!-- Desk Booking Confirmation Modal -->
+  <div class="modal-overlay hidden" id="desk-modal-overlay" onclick="closeDeskModal(event)">
+    <div class="modal" id="desk-modal">
+      <div class="modal-header">
+        <h3 id="desk-modal-title">Desk Details</h3>
+        <button class="modal-close" onclick="closeDeskModalDirect()" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="desk-modal-body"></div>
+      <div class="modal-footer" id="desk-modal-footer"></div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container"></div>
+
+  <!-- Booking animation overlay -->
+  <div id="booking-anim" class="booking-anim hidden"></div>
+
+  <script>
+    // Data migration: clear stored data so new defaults (Nara, maxBookingDays) load fresh
+    (function () {
+      const v = localStorage.getItem('df_app_version');
+      if (v !== '5') {
+        ['df_desks', 'df_floor_layouts', 'df_floors', 'df_users', 'df_bookings'].forEach(k => localStorage.removeItem(k));
+        localStorage.setItem('df_app_version', '5');
+      }
+    })();
+  </script>
+  <script src="data.js?v=5"></script>
+  <script src="app.js?v=5"></script>
+</body>
+
+</html>
