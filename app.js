@@ -663,8 +663,28 @@ function executePendingUnbook() {
     pendingDeskAction = null;
 }
 
-function handleBookDesk(deskId, dates, isUnbook, overrideUserId = null) {
+async function handleBookDesk(deskId, dates, isUnbook, overrideUserId = null) {
     const userId = overrideUserId || currentUser.id;
+
+    // Fetch the very latest bookings from Firebase before writing
+    // This catches conflicts from other users who booked in the last 30 seconds
+    showToast('Checking availability\u2026', 'info');
+    await CloudSync.fetchKey('df_bookings');
+
+    // Re-check: are these dates still free for this desk?
+    const conflicts = dates.filter(dateStr => {
+        const existing = BookingAPI.getBooking(currentFloorId, deskId, dateStr);
+        return existing && existing.userId !== userId;
+    });
+
+    if (conflicts.length > 0) {
+        closeDeskModalDirect();
+        renderFloor(); // show the newly-fetched booked state
+        showToast('\u274c Desk just booked by someone else! Please choose another.', 'error');
+        return;
+    }
+
+    // All clear — proceed with booking
     let booked = 0;
     dates.forEach(dateStr => {
         if (BookingAPI.book(currentFloorId, deskId, dateStr, userId)) {
@@ -679,9 +699,10 @@ function handleBookDesk(deskId, dates, isUnbook, overrideUserId = null) {
         showBookingAnimation(true);
         animateDesk(deskId, 'just-booked');
         renderFloor();
-        showToast(`Desk booked for ${booked} date${booked > 1 ? 's' : ''}! 🎉`, 'success');
+        showToast(`Desk booked for ${booked} date${booked > 1 ? 's' : ''}! \uD83C\uDF89`, 'success');
     } else {
-        showToast('Could not book — desk already taken for those dates', 'error');
+        renderFloor();
+        showToast('Could not book \u2014 desk already taken for those dates', 'error');
     }
 }
 

@@ -397,6 +397,19 @@ const CloudSync = {
         }));
     },
 
+    // Fetch a single key from Firebase and update localStorage.
+    // Used for pre-write freshness checks (faster than fetchAll).
+    async fetchKey(key) {
+        try {
+            const r = await fetch(`${FIREBASE_URL}/${key}.json`, { cache: 'no-store' });
+            if (!r.ok) return;
+            const data = await r.json();
+            if (data !== null) {
+                localStorage.setItem(key, JSON.stringify(data));
+            }
+        } catch { /* network unavailable — use local cache */ }
+    },
+
     // Push a single key to Firebase (fire-and-forget).
     push(key, val) {
         if (!CLOUD_KEYS.includes(key)) return;
