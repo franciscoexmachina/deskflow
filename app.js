@@ -19,7 +19,11 @@ let pendingDeskAction = null;
 let audioCtx = null;
 
 // ===== INIT =====
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
+    // Load local defaults first, then overwrite with cloud truth
+    initData();
+    await CloudSync.fetchAll();
+
     const user = SessionAPI.getCurrentUser();
     if (user) {
         loginUser(user);
@@ -104,11 +108,33 @@ function handleLogin(e) {
     loginUser(user);
 }
 
+let cloudPollInterval = null;
+
 function loginUser(user) {
     currentUser = user;
     setupUI();
     showScreen('app-screen');
     switchView('calendar'); // Start on calendar so user picks dates first
+    startCloudPolling();
+}
+
+function startCloudPolling() {
+    if (cloudPollInterval) clearInterval(cloudPollInterval);
+    cloudPollInterval = setInterval(async () => {
+        await CloudSync.fetchAll();
+        // Re-render live views so other users' bookings appear
+        if (currentView === 'floor') renderFloor();
+        if (currentView === 'mybookings') renderMyBookings();
+        if (currentView === 'admin') renderAdminBookings();
+        showSyncPulse();
+    }, 30000); // every 30 seconds
+}
+
+function showSyncPulse() {
+    const dot = document.getElementById('sync-dot');
+    if (!dot) return;
+    dot.classList.add('synced');
+    setTimeout(() => dot.classList.remove('synced'), 1500);
 }
 
 function logout() {

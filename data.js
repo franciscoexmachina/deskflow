@@ -1,5 +1,11 @@
 // ===== DESKFLOW DATA LAYER =====
-// Persistent storage via localStorage
+// Persistent storage: localStorage (local cache) + Firebase Realtime Database (shared truth)
+
+// Firebase Realtime Database — set this to your project's database URL
+const FIREBASE_URL = 'https://deskflow-default-rtdb.firebaseio.com';
+
+// Keys that are shared across all users (session is deliberately excluded)
+const CLOUD_KEYS = ['df_users', 'df_floors', 'df_desks', 'df_bookings', 'df_floor_layouts'];
 
 const STORAGE_KEYS = {
     USERS: 'df_users',
@@ -370,6 +376,35 @@ const Store = {
     },
     set(key, val) {
         try { localStorage.setItem(key, JSON.stringify(val)); } catch { }
+        CloudSync.push(key, val);
+    },
+};
+
+// ===== CLOUD SYNC (Firebase Realtime Database REST API) =====
+const CloudSync = {
+    // Fetch all shared data from Firebase and update localStorage.
+    // Called once on init (awaited) and periodically thereafter.
+    async fetchAll() {
+        await Promise.all(CLOUD_KEYS.map(async key => {
+            try {
+                const r = await fetch(`${FIREBASE_URL}/${key}.json`, { cache: 'no-store' });
+                if (!r.ok) return;
+                const data = await r.json();
+                if (data !== null) {
+                    localStorage.setItem(key, JSON.stringify(data));
+                }
+            } catch { /* network unavailable — use local cache */ }
+        }));
+    },
+
+    // Push a single key to Firebase (fire-and-forget).
+    push(key, val) {
+        if (!CLOUD_KEYS.includes(key)) return;
+        fetch(`${FIREBASE_URL}/${key}.json`, {
+            method: 'PUT',
+            body: JSON.stringify(val),
+            headers: { 'Content-Type': 'application/json' },
+        }).catch(() => { /* ignore network errors on write */ });
     },
 };
 

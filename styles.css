@@ -1792,3 +1792,39 @@ button.date-chip {
   outline: none;
   border-color: var(--accent-primary);
 }
+
+/* ===== CLOUD SYNC INDICATOR ===== */
+.sync-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  margin-left: -6px;
+  margin-right: 8px;
+  flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.sync-dot.synced {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px var(--accent-green);
+  animation: syncPulse 1.5s ease forwards;
+}
+
+@keyframes syncPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.6);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+}
