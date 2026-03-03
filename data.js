@@ -378,6 +378,11 @@ const Store = {
         try { localStorage.setItem(key, JSON.stringify(val)); } catch { }
         CloudSync.push(key, val);
     },
+    // Local-only write — does NOT push to Firebase.
+    // Used in initData() so blank defaults don't overwrite real cloud data.
+    setLocal(key, val) {
+        try { localStorage.setItem(key, JSON.stringify(val)); } catch { }
+    },
 };
 
 // ===== CLOUD SYNC (Firebase Realtime Database REST API) =====
@@ -422,22 +427,23 @@ const CloudSync = {
 };
 
 // ===== INITIALIZE DATA =====
+// Uses setLocal() so defaults are written only to localStorage and never
+// pushed to Firebase — CloudSync.fetchAll() will overwrite with real data.
 function initData() {
     if (!Store.get(STORAGE_KEYS.USERS, null)) {
-        Store.set(STORAGE_KEYS.USERS, DEFAULT_USERS);
+        Store.setLocal(STORAGE_KEYS.USERS, DEFAULT_USERS);
     }
     if (!Store.get(STORAGE_KEYS.FLOORS, null)) {
-        Store.set(STORAGE_KEYS.FLOORS, DEFAULT_FLOORS);
+        Store.setLocal(STORAGE_KEYS.FLOORS, DEFAULT_FLOORS);
     }
     if (!Store.get(STORAGE_KEYS.DESKS, null)) {
-        Store.set(STORAGE_KEYS.DESKS, DEFAULT_DESKS);
+        Store.setLocal(STORAGE_KEYS.DESKS, DEFAULT_DESKS);
     }
     if (!Store.get(STORAGE_KEYS.BOOKINGS, null)) {
-        Store.set(STORAGE_KEYS.BOOKINGS, {});
+        Store.setLocal(STORAGE_KEYS.BOOKINGS, {});
     }
-    // Floor layouts stored separately so custom floors can have layouts
     if (!Store.get(STORAGE_KEYS.FLOOR_LAYOUTS, null)) {
-        Store.set(STORAGE_KEYS.FLOOR_LAYOUTS, DEFAULT_FLOOR_LAYOUTS);
+        Store.setLocal(STORAGE_KEYS.FLOOR_LAYOUTS, DEFAULT_FLOOR_LAYOUTS);
     }
 }
 
@@ -490,12 +496,11 @@ const FloorAPI = {
         const newFloor = { id, name };
         floors.push(newFloor);
         this.save(floors);
-        // Initialize empty desks and layout for new floor
         const desks = DeskAPI.getAll();
         desks[id] = [];
         DeskAPI.save(desks);
         const layouts = this.getAllLayouts();
-        layouts[id] = { rooms: [], zones: [] };
+        layouts[id] = { rooms: [], zones: [], walls: [], boxes: [] };
         Store.set(STORAGE_KEYS.FLOOR_LAYOUTS, layouts);
         return newFloor;
     },
@@ -521,7 +526,19 @@ const FloorAPI = {
     },
     getLayout(floorId) {
         const layouts = this.getAllLayouts();
-        return layouts[floorId] || { rooms: [], zones: [] };
+        const l = layouts[floorId] || {};
+        return {
+            rooms: l.rooms || [],
+            zones: l.zones || [],
+            walls: l.walls || [],
+            boxes: l.boxes || [],
+        };
+    },
+    // Save a full layout object for a floor
+    saveLayout(floorId, layout) {
+        const layouts = this.getAllLayouts();
+        layouts[floorId] = layout;
+        Store.set(STORAGE_KEYS.FLOOR_LAYOUTS, layouts);
     },
     updateRoomLabel(floorId, roomId, newLabel) {
         const layouts = this.getAllLayouts();

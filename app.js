@@ -154,15 +154,19 @@ function setupUI() {
     document.getElementById('user-name-sidebar').textContent = currentUser.name;
     document.getElementById('user-role-sidebar').textContent = currentUser.role === 'admin' ? '⭐ Admin' : 'User';
 
-    // Admin nav
+    // Admin nav — show for admin users
     const adminNav = document.getElementById('nav-admin');
     const adminDivider = document.getElementById('admin-nav-divider');
     if (currentUser.role === 'admin') {
         adminNav.classList.remove('hidden');
         adminDivider.style.display = '';
+        const designerNav = document.getElementById('nav-designer');
+        if (designerNav) designerNav.classList.remove('hidden');
     } else {
         adminNav.classList.add('hidden');
         adminDivider.style.display = 'none';
+        const designerNav = document.getElementById('nav-designer');
+        if (designerNav) designerNav.classList.add('hidden');
     }
 
     // Build floor tabs
@@ -194,35 +198,25 @@ function switchView(view) {
     const navEl = document.getElementById(`nav-${view}`);
     if (navEl) navEl.classList.add('active');
 
-    const titles = { floor: 'Floor Map', calendar: 'Calendar', mybookings: 'My Bookings', admin: 'Admin Panel' };
+    const titles = { floor: 'Floor Map', calendar: 'Calendar', mybookings: 'My Bookings', admin: 'Admin Panel', designer: 'Floor Designer' };
     document.getElementById('topbar-title').textContent = titles[view] || '';
 
-    // Render view-specific content
     if (view === 'floor') renderFloor();
     else if (view === 'calendar') renderCalendar();
     else if (view === 'mybookings') renderMyBookings();
     else if (view === 'admin') renderAdmin();
+    else if (view === 'designer') {
+        if (!Designer._listenersSetup) Designer.setupGlobalListeners();
+        Designer.init(currentFloorId);
+        Designer.setupPalette();
+    }
 
-    // Topbar actions
     renderTopbarActions(view);
 }
 
 function renderTopbarActions(view) {
     const el = document.getElementById('topbar-actions');
-    if (view === 'floor' && currentUser.role === 'admin') {
-        el.innerHTML = `
-      <button class="btn-ghost btn-sm${adminDragMode ? ' active-action' : ''}" 
-        onclick="toggleDragMode()" id="drag-mode-btn" title="Toggle desk drag mode">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/>
-          <polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/>
-          <line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>
-        </svg>
-        ${adminDragMode ? 'Done Moving' : 'Move Desks'}
-      </button>`;
-    } else {
-        el.innerHTML = '';
-    }
+    el.innerHTML = ''; // Move Desks removed — use Floor Designer instead
 }
 
 function toggleSidebar() {
@@ -313,7 +307,15 @@ function renderFloorCanvas() {
         canvas.appendChild(el);
     });
 
-    // Draw rooms (solid borders)
+    // Draw walls (structural filled rectangles)
+    (layout.walls || []).forEach(wall => {
+        const el = document.createElement('div');
+        el.className = 'floor-wall';
+        el.style.cssText = `left:${wall.x}px;top:${wall.y}px;width:${wall.w}px;height:${wall.h}px;`;
+        canvas.appendChild(el);
+    });
+
+    // Draw rooms (solid borders + label)
     (layout.rooms || []).forEach(room => {
         const el = document.createElement('div');
         el.className = 'floor-room';
@@ -325,7 +327,20 @@ function renderFloorCanvas() {
         canvas.appendChild(el);
     });
 
-    // Determine which dates to use for desk colour rendering
+    // Draw boxes (labelled generic objects)
+    (layout.boxes || []).forEach(box => {
+        const el = document.createElement('div');
+        el.className = 'floor-box';
+        el.style.cssText = `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px;`;
+        if (box.label) {
+            const lbl = document.createElement('div');
+            lbl.className = 'floor-box-label';
+            lbl.textContent = box.label;
+            el.appendChild(lbl);
+        }
+        canvas.appendChild(el);
+    });
+
     const viewDates = filterDates.length > 0 ? filterDates : selectedDates;
 
     // Collect bookings for view dates
