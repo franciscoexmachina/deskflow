@@ -265,19 +265,17 @@ const Designer = {
             const icon = document.createElement('div');
             icon.className = 'dsobj-desk-icon';
             if (isFixed) {
-                icon.innerHTML = `<svg viewBox="0 0 40 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="4" y="10" width="32" height="24" rx="2" fill="rgba(100,116,139,0.7)"/>
-                    <rect x="4" y="6" width="32" height="6" rx="1" fill="#94a3b8"/>
-                    <rect x="6" y="34" width="4" height="8" rx="1" fill="#64748b"/>
-                    <rect x="30" y="34" width="4" height="8" rx="1" fill="#64748b"/>
-                    <text x="20" y="28" text-anchor="middle" font-size="12" fill="#e2e8f0" font-family="sans-serif">&#x1F512;</text>
+                icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="14" width="20" height="4" rx="1" stroke-opacity="0.7"/>
+                    <circle cx="12" cy="6" r="3"/>
+                    <path d="M7 14c0-3 2-5 5-5s5 2 5 5"/>
+                    <text x="12" y="14" text-anchor="middle" font-size="6" fill="#e2e8f0" stroke="none" font-family="sans-serif">&#x1F512;</text>
                 </svg>`;
             } else {
-                icon.innerHTML = `<svg viewBox="0 0 40 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="4" y="10" width="32" height="24" rx="2" fill="rgba(99,102,241,0.8)"/>
-                    <rect x="4" y="6" width="32" height="6" rx="1" fill="#818cf8"/>
-                    <rect x="6" y="34" width="4" height="8" rx="1" fill="#4f46e5"/>
-                    <rect x="30" y="34" width="4" height="8" rx="1" fill="#4f46e5"/>
+                icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="14" width="20" height="4" rx="1" stroke-opacity="0.7"/>
+                    <circle cx="12" cy="6" r="3"/>
+                    <path d="M7 14c0-3 2-5 5-5s5 2 5 5"/>
                 </svg>`;
             }
             el.appendChild(icon);

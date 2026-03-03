@@ -494,15 +494,10 @@ function renderFloorCanvas() {
         } else {
             deskEl.classList.add('available');
             // Desk icon — overhead view of a desk with monitor
-            deskEl.innerHTML = `<svg class="desk-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- desk surface -->
-              <rect x="3" y="12" width="26" height="14" rx="2" fill="currentColor" opacity="0.18" stroke="currentColor" stroke-width="1.5"/>
-              <!-- monitor -->
-              <rect x="10" y="5" width="12" height="8" rx="1.5" fill="currentColor" opacity="0.35" stroke="currentColor" stroke-width="1.4"/>
-              <!-- monitor stand -->
-              <rect x="14.5" y="13" width="3" height="3" rx="0.5" fill="currentColor" opacity="0.5"/>
-              <!-- keyboard -->
-              <rect x="8" y="19" width="16" height="4" rx="1" fill="currentColor" opacity="0.4" stroke="currentColor" stroke-width="1"/>
+            deskEl.innerHTML = `<svg class="desk-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="14" width="20" height="4" rx="1" stroke-opacity="0.7"/>
+              <circle cx="12" cy="6" r="3"/>
+              <path d="M7 14c0-3 2-5 5-5s5 2 5 5"/>
             </svg>`;
         }
 
