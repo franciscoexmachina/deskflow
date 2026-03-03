@@ -2259,11 +2259,59 @@ button.date-chip {
 }
 
 .floor-box-label {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
   font-size: 0.6rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.45);
   text-align: center;
   pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+.box-lock-icon {
+  width: 50%;
+  height: 50%;
+  max-width: 24px;
+  max-height: 24px;
+  opacity: 0.8;
+  transition: all 0.2s ease;
+}
+
+.floor-box-booked .box-lock-icon {
+  opacity: 1;
+  color: #818cf8;
+}
+
+.floor-box-available .box-lock-icon {
+  color: var(--accent-green);
+}
+
+/* Designer version */
+.dsobj-box .dsobj-label {
+  position: absolute !important;
+  bottom: 4px !important;
+  top: auto !important;
+  left: 0 !important;
+  right: 0 !important;
+  font-size: 0.6rem !important;
+  font-weight: 700 !important;
+}
+
+.box-lock-icon-ds {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40%;
+  height: 40%;
+  color: var(--accent-primary);
+  opacity: 0.6;
 }
 
 /* Area always stays in background — never boost z-index on hover */
