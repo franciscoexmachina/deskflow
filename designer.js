@@ -99,7 +99,7 @@ const Designer = {
             <button class="ds-tb-btn ${em ? 'ds-tb-edit' : 'ds-tb-locked'}" onclick="Designer.toggleEditMode()" title="${em ? 'Lock (disable editing)' : 'Unlock to edit'}">
                 ${em
                 ? '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="12" height="9" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0"/></svg> Editing'
-                : '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="12" height="9" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg> Locked'}
+                : '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="12" height="9" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg> Edit'}
             </button>
             <div class="ds-tb-sep"></div>
             <button class="ds-tb-btn" onclick="Designer.undo()" title="Undo (Ctrl+Z)" ${!hasHistory || !em ? 'disabled' : ''}>
