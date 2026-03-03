@@ -114,6 +114,8 @@ function toggleAuthMode() {
         sub.textContent = 'Create a workspace and admin account';
         passLabel.textContent = 'Admin Password';
         orgInput.value = '';
+        document.getElementById('group-master-pass').style.display = 'block';
+        document.getElementById('login-master-pass').required = true;
     } else {
         btn.textContent = 'Sign In';
         txt.textContent = 'Create new organization';
@@ -121,6 +123,9 @@ function toggleAuthMode() {
         sub.textContent = 'Sign in to book your workspace';
         passLabel.textContent = 'Password';
         orgInput.value = 'demoorg';
+        document.getElementById('group-master-pass').style.display = 'none';
+        document.getElementById('login-master-pass').required = false;
+        document.getElementById('login-master-pass').value = '';
     }
 }
 
@@ -152,10 +157,17 @@ async function handleAuth(e) {
     // 1. Set the active Org ID so data APIs point to the right partition
     setOrg(orgId);
 
-    // 2. Fetch users for this org to map presence
-    await CloudSync.fetchKey(`df_${orgId}_users`);
+    // 2. Fetch users for this org to map presence (fixes the bug since STORAGE_KEYS.USERS is the correct internal key)
+    await CloudSync.fetchKey(STORAGE_KEYS.USERS);
 
     if (isCreateOrgMode) {
+        const masterPass = document.getElementById('login-master-pass').value;
+        if (masterPass !== 'deskflow-superadmin') {
+            showError('Invalid Superadmin Password');
+            resetBtn();
+            return;
+        }
+
         const existingUsers = Store.get(STORAGE_KEYS.USERS, null);
         if (existingUsers && existingUsers.length > 0) {
             showError('Organization already exists');

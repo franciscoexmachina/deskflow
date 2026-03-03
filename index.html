@@ -46,6 +46,10 @@
           <label for="login-org">Organization ID</label>
           <input type="text" id="login-org" placeholder="e.g. acmeCorp" value="demoorg" required />
         </div>
+        <div class="field-group" id="group-master-pass" style="display: none;">
+          <label for="login-master-pass">Superadmin Password</label>
+          <input type="password" id="login-master-pass" placeholder="Required to create orgs" />
+        </div>
         <div class="field-group">
           <label for="login-username">Username</label>
           <input type="text" id="login-username" placeholder="Enter your username" autocomplete="username" required />
@@ -65,7 +69,7 @@
 
       <div
         style="position: absolute; bottom: 12px; right: 16px; font-size: 0.65rem; color: rgba(255,255,255,0.3); font-weight: 600;">
-        v10.0.0</div>
+        v11.0.0</div>
     </div>
   </div>
 
@@ -306,9 +310,9 @@
       }
     })();
   </script>
-  <script src="data.js?v=10"></script>
-  <script src="designer.js?v=10"></script>
-  <script src="app.js?v=10"></script>
+  <script src="data.js?v=11"></script>
+  <script src="designer.js?v=11"></script>
+  <script src="app.js?v=11"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       var mc = document.getElementById('main-content');
