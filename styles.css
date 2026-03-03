@@ -2392,3 +2392,137 @@ button.date-chip {
 .ds-align-btn:active {
   transform: scale(0.95);
 }
+
+/* ===== DYNAMIC TOOLBAR BUTTONS ===== */
+.ds-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ds-tb-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.ds-tb-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.ds-tb-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.ds-tb-edit {
+  background: rgba(34, 197, 94, 0.12) !important;
+  border-color: var(--accent-green) !important;
+  color: var(--accent-green) !important;
+}
+
+.ds-tb-locked {
+  background: rgba(100, 116, 139, 0.1) !important;
+  border-color: #64748b !important;
+  color: #94a3b8 !important;
+}
+
+.ds-tb-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.ds-save-btn {
+  background: rgba(99, 102, 241, 0.15) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--accent-primary) !important;
+}
+
+/* Canvas locked state */
+.ds-canvas-locked {
+  cursor: default !important;
+}
+
+.ds-canvas-locked .dsobj {
+  cursor: default !important;
+  pointer-events: none;
+}
+
+/* Fixed Desk palette preview */
+.ds-pal-fixeddesk {
+  background: rgba(100, 116, 139, 0.3);
+  border: 2px solid #64748b;
+  border-radius: 3px;
+  position: relative;
+}
+
+.ds-pal-fixeddesk::after {
+  content: '\1F512';
+  font-size: 10px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Fixed Desk on canvas */
+.dsobj-fixeddesk {
+  background: rgba(51, 65, 85, 0.7);
+  border: 2px solid #64748b;
+  opacity: 0.85;
+}
+
+/* Fixed Desk in floor map view */
+.desk.desk-fixed {
+  opacity: 0.6;
+  cursor: default !important;
+  border-color: #475569 !important;
+}
+
+.desk.desk-fixed .desk-icon {
+  opacity: 0.5;
+}
+
+.desk.desk-fixed .desk-id {
+  color: #64748b;
+}
+
+/* Properties bookable toggle */
+.ds-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.ds-toggle-wrap input[type=checkbox] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.ds-toggle-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.ds-type-fixeddesk {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}

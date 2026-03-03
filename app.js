@@ -396,8 +396,11 @@ function renderFloorCanvas() {
         idSpan.textContent = desk.label;
         deskEl.appendChild(idSpan);
 
-        // Admin drag mode
-        if (adminDragMode && currentUser.role === 'admin') {
+        // Fixed (unbookable) desks — show differently, no click handler
+        if (desk.fixed) {
+            deskEl.classList.add('desk-fixed');
+            deskEl.title = `${desk.label} — Fixed desk (not bookable)`;
+        } else if (adminDragMode && currentUser.role === 'admin') {
             deskEl.classList.add('drag-mode');
             setupDeskDrag(deskEl, desk);
         } else {

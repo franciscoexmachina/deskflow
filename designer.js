@@ -5,22 +5,27 @@
 const Designer = {
     CANVAS_W: 1100,
     CANVAS_H: 760,
+    MAX_HISTORY: 30,
 
     TYPES: {
         area: { w: 220, h: 160, label: 'Area', resizable: true },
         desk: { w: 46, h: 54, label: 'D', resizable: false },
+        fixeddesk: { w: 46, h: 54, label: 'F', resizable: false },
         wall: { w: 140, h: 22, label: '', resizable: true },
         box: { w: 90, h: 60, label: 'Box', resizable: true },
     },
 
     state: {
         floorId: null,
+        editMode: false,          // locked until user clicks Edit
         objects: [],
-        selectedId: null,   // primary selected (shown in properties)
-        selectedIds: [],    // all selected (for multi-move/delete)
-        _drag: null,        // { id, sx, sy, starts:[{id,ox,oy}] }
-        _resize: null,      // { id, handle, sx, sy, ox, oy, ow, oh }
-        _selBox: null,      // rubber-band: { sx, sy, ex, ey, canvasRect }
+        selectedId: null,
+        selectedIds: [],
+        _drag: null,
+        _resize: null,
+        _selBox: null,
+        _clipboard: [],           // deep-cloned objects ready to paste
+        _history: [],             // undo stack of objects snapshots
     },
 
     // ---- Lifecycle ----
@@ -34,9 +39,12 @@ const Designer = {
         this.state._selBox = null;
         this.loadFromData();
         this.renderFloorTabs();
+        this.renderToolbar();
         this.render();
         this.renderProperties();
     },
+
+    // ---- Data I/O ----
 
     loadFromData() {
         const fid = this.state.floorId;
@@ -48,7 +56,7 @@ const Designer = {
         (layout.zones || []).forEach(z =>
             objs.push({ id: z.id, type: 'area', x: z.x, y: z.y, w: z.w, h: z.h, label: z.label || '' }));
         desks.forEach(d =>
-            objs.push({ id: d.id, type: 'desk', x: d.x, y: d.y, w: 46, h: 54, label: d.label || 'D' }));
+            objs.push({ id: d.id, type: d.fixed ? 'fixeddesk' : 'desk', x: d.x, y: d.y, w: 46, h: 54, label: d.label || 'D' }));
         (layout.walls || []).forEach(w =>
             objs.push({ id: w.id, type: 'wall', x: w.x, y: w.y, w: w.w, h: w.h, label: '' }));
         (layout.boxes || []).forEach(b =>
@@ -61,10 +69,16 @@ const Designer = {
         const rooms = [], walls = [], boxes = [], desks = [];
         this.state.objects.forEach(o => {
             const base = { id: o.id, x: Math.round(o.x), y: Math.round(o.y) };
-            if (o.type === 'area') rooms.push({ ...base, w: Math.round(o.w), h: Math.round(o.h), label: o.label || '' });
-            else if (o.type === 'desk') desks.push({ ...base, label: o.label || 'D' });
-            else if (o.type === 'wall') walls.push({ ...base, w: Math.round(o.w), h: Math.round(o.h) });
-            else if (o.type === 'box') boxes.push({ ...base, w: Math.round(o.w), h: Math.round(o.h), label: o.label || '' });
+            if (o.type === 'area')
+                rooms.push({ ...base, w: Math.round(o.w), h: Math.round(o.h), label: o.label || '' });
+            else if (o.type === 'desk')
+                desks.push({ ...base, label: o.label || 'D', fixed: false });
+            else if (o.type === 'fixeddesk')
+                desks.push({ ...base, label: o.label || 'F', fixed: true });
+            else if (o.type === 'wall')
+                walls.push({ ...base, w: Math.round(o.w), h: Math.round(o.h) });
+            else if (o.type === 'box')
+                boxes.push({ ...base, w: Math.round(o.w), h: Math.round(o.h), label: o.label || '' });
         });
         FloorAPI.saveLayout(fid, { rooms, zones: [], walls, boxes });
         const allDesks = DeskAPI.getAll();
@@ -73,57 +87,155 @@ const Designer = {
         showToast('Floor saved \u2713', 'success');
     },
 
+    // ---- Toolbar ----
+
+    renderToolbar() {
+        const wrap = document.getElementById('designer-toolbar-actions');
+        if (!wrap) return;
+        const em = this.state.editMode;
+        const hasHistory = this.state._history.length > 0;
+        const hasClipboard = this.state._clipboard.length > 0;
+        wrap.innerHTML = `
+            <button class="ds-tb-btn ${em ? 'ds-tb-edit' : 'ds-tb-locked'}" onclick="Designer.toggleEditMode()" title="${em ? 'Lock (disable editing)' : 'Unlock to edit'}">
+                ${em
+                ? '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="12" height="9" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0"/></svg> Editing'
+                : '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="12" height="9" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg> Locked'}
+            </button>
+            <div class="ds-tb-sep"></div>
+            <button class="ds-tb-btn" onclick="Designer.undo()" title="Undo (Ctrl+Z)" ${!hasHistory || !em ? 'disabled' : ''}>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8H13a5 5 0 0 1 0 10H5"/><polyline points="8 4 4 8 8 12"/></svg>
+                Undo
+            </button>
+            <button class="ds-tb-btn" onclick="Designer.copy()" title="Copy (Ctrl+C)" ${!em ? 'disabled' : ''}>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="7" width="10" height="12" rx="1.5"/><path d="M13 7V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>
+                Copy
+            </button>
+            <button class="ds-tb-btn" onclick="Designer.paste()" title="Paste (Ctrl+V)" ${!hasClipboard || !em ? 'disabled' : ''}>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="5" width="12" height="13" rx="1.5"/><path d="M8 5V3.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V5"/></svg>
+                Paste
+            </button>
+            <div class="ds-tb-sep"></div>
+            <button class="ds-tb-btn ds-add-floor-btn" onclick="Designer.createFloor()" title="Create a new floor" ${!em ? 'disabled' : ''}>+ Add Floor</button>
+            <button class="ds-tb-btn ds-del-floor-btn" onclick="Designer.deleteFloor()" title="Delete this floor" ${!em ? 'disabled' : ''}>&#128465; Delete Floor</button>
+            <button class="ds-tb-btn ds-save-btn" onclick="Designer.saveToData()" title="Save floor layout">&#128190; Save</button>
+        `;
+    },
+
+    toggleEditMode() {
+        this.state.editMode = !this.state.editMode;
+        if (!this.state.editMode) {
+            this.state.selectedIds = [];
+            this.state.selectedId = null;
+        }
+        this.renderToolbar();
+        this.render();
+        this.renderProperties();
+        // Re-register palette/canvas (drag-drop only active in edit mode)
+        this.setupPalette();
+        showToast(this.state.editMode ? '✏️ Edit mode — make your changes' : '🔒 Locked — changes saved', 'info');
+    },
+
     // ---- Floor Management ----
 
     renderFloorTabs() {
         const el = document.getElementById('designer-floor-tabs');
         if (!el) return;
-        const tabs = FloorAPI.getAll().map(f =>
+        el.innerHTML = FloorAPI.getAll().map(f =>
             `<button class="floor-tab-btn${f.id === this.state.floorId ? ' active' : ''}"
                 onclick="Designer.switchFloor('${f.id}')">${f.name}</button>`
         ).join('');
-        el.innerHTML = tabs;
     },
 
     switchFloor(fid) {
         this.state.floorId = fid;
         currentFloorId = fid;
+        this.state.editMode = false;
         this.init(fid);
     },
 
     createFloor() {
+        if (!this.state.editMode) return;
         const name = prompt('New floor name:', 'Floor ' + (FloorAPI.getAll().length + 1));
         if (!name || !name.trim()) return;
         const newFloor = FloorAPI.add(name.trim());
         this.switchFloor(newFloor.id);
-        // Rebuild floor tabs in main floor view too
         if (typeof buildFloorTabs === 'function') buildFloorTabs();
         showToast(`Floor "${newFloor.name}" created`, 'success');
     },
 
     deleteFloor() {
+        if (!this.state.editMode) return;
         const floors = FloorAPI.getAll();
         if (floors.length <= 1) { showToast('Cannot delete the last floor', 'error'); return; }
         const floor = floors.find(f => f.id === this.state.floorId);
-        if (!confirm(`Delete "${floor ? floor.name : 'this floor'}"? All desks and bookings on this floor will be lost.`)) return;
+        if (!confirm(`Delete "${floor ? floor.name : 'this floor'}"? All desks and bookings will be lost.`)) return;
         const ok = FloorAPI.delete(this.state.floorId);
         if (ok) {
-            const remaining = FloorAPI.getAll();
-            this.switchFloor(remaining[0].id);
             if (typeof buildFloorTabs === 'function') buildFloorTabs();
+            this.switchFloor(FloorAPI.getAll()[0].id);
             showToast('Floor deleted', 'info');
         }
     },
 
-    // ---- Render ----
+    // ---- Undo History ----
+
+    _pushHistory() {
+        this.state._history.push(JSON.parse(JSON.stringify(this.state.objects)));
+        if (this.state._history.length > this.MAX_HISTORY) this.state._history.shift();
+        this.renderToolbar();
+    },
+
+    undo() {
+        if (!this.state.editMode || this.state._history.length === 0) return;
+        this.state.objects = this.state._history.pop();
+        this.state.selectedIds = [];
+        this.state.selectedId = null;
+        this.renderToolbar();
+        this.render();
+        this.renderProperties();
+        showToast('Undone', 'info');
+    },
+
+    // ---- Clipboard ----
+
+    copy() {
+        if (!this.state.editMode) return;
+        const objs = this.state.objects.filter(o => this.state.selectedIds.includes(o.id));
+        if (objs.length === 0) return;
+        this.state._clipboard = JSON.parse(JSON.stringify(objs));
+        this.renderToolbar();
+        showToast(`Copied ${objs.length} object${objs.length > 1 ? 's' : ''}`, 'info');
+    },
+
+    paste() {
+        if (!this.state.editMode || this.state._clipboard.length === 0) return;
+        this._pushHistory();
+        const offset = 24;
+        const newIds = [];
+        this.state._clipboard.forEach(src => {
+            const obj = {
+                ...src, id: `${src.type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                x: Math.min(this.CANVAS_W - src.w, src.x + offset),
+                y: Math.min(this.CANVAS_H - src.h, src.y + offset)
+            };
+            this.state.objects.push(obj);
+            newIds.push(obj.id);
+        });
+        // Update clipboard to paste FROM the pasted positions next time
+        this.state._clipboard = this.state.objects.filter(o => newIds.includes(o.id)).map(o => JSON.parse(JSON.stringify(o)));
+        this.render();
+        this.selectMultiple(newIds);
+        showToast(`Pasted ${newIds.length} object${newIds.length > 1 ? 's' : ''}`, 'success');
+    },
+
+    // ---- Canvas Render ----
 
     render() {
         const canvas = document.getElementById('designer-canvas');
         if (!canvas) return;
-        // Remove all objects but keep the selection box el if present
         canvas.querySelectorAll('.dsobj').forEach(el => el.remove());
-        // Draw order: areas (back) -> walls -> boxes -> desks (front)
-        const order = ['area', 'wall', 'box', 'desk'];
+        canvas.classList.toggle('ds-canvas-locked', !this.state.editMode);
+        const order = ['area', 'wall', 'box', 'desk', 'fixeddesk'];
         [...this.state.objects]
             .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type))
             .forEach(obj => canvas.appendChild(this.createEl(obj)));
@@ -131,11 +243,15 @@ const Designer = {
 
     createEl(obj) {
         const isSelected = this.state.selectedIds.includes(obj.id);
+        const em = this.state.editMode;
+        const isFixed = obj.type === 'fixeddesk';
+        const isDesk = obj.type === 'desk' || isFixed;
         const el = document.createElement('div');
         el.id = `dsobj-${obj.id}`;
-        el.className = `dsobj dsobj-${obj.type}${isSelected ? ' dsobj-selected' : ''}`;
+        el.className = `dsobj dsobj-${isFixed ? 'desk dsobj-fixeddesk' : obj.type}${isSelected ? ' dsobj-selected' : ''}`;
         el.style.cssText = `left:${obj.x}px;top:${obj.y}px;width:${obj.w}px;height:${obj.h}px;`;
 
+        // Label
         if (obj.type !== 'wall') {
             const lbl = document.createElement('span');
             lbl.className = 'dsobj-label';
@@ -143,20 +259,31 @@ const Designer = {
             el.appendChild(lbl);
         }
 
-        if (obj.type === 'desk') {
+        // Desk / Fixed-desk icon
+        if (isDesk) {
             const icon = document.createElement('div');
             icon.className = 'dsobj-desk-icon';
-            icon.innerHTML = `<svg viewBox="0 0 40 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="4" y="10" width="32" height="24" rx="2" fill="rgba(99,102,241,0.8)"/>
-                <rect x="4" y="6" width="32" height="6" rx="1" fill="#818cf8"/>
-                <rect x="6" y="34" width="4" height="8" rx="1" fill="#4f46e5"/>
-                <rect x="30" y="34" width="4" height="8" rx="1" fill="#4f46e5"/>
-            </svg>`;
+            if (isFixed) {
+                icon.innerHTML = `<svg viewBox="0 0 40 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="4" y="10" width="32" height="24" rx="2" fill="rgba(100,116,139,0.7)"/>
+                    <rect x="4" y="6" width="32" height="6" rx="1" fill="#94a3b8"/>
+                    <rect x="6" y="34" width="4" height="8" rx="1" fill="#64748b"/>
+                    <rect x="30" y="34" width="4" height="8" rx="1" fill="#64748b"/>
+                    <text x="20" y="28" text-anchor="middle" font-size="12" fill="#e2e8f0" font-family="sans-serif">&#x1F512;</text>
+                </svg>`;
+            } else {
+                icon.innerHTML = `<svg viewBox="0 0 40 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="4" y="10" width="32" height="24" rx="2" fill="rgba(99,102,241,0.8)"/>
+                    <rect x="4" y="6" width="32" height="6" rx="1" fill="#818cf8"/>
+                    <rect x="6" y="34" width="4" height="8" rx="1" fill="#4f46e5"/>
+                    <rect x="30" y="34" width="4" height="8" rx="1" fill="#4f46e5"/>
+                </svg>`;
+            }
             el.appendChild(icon);
         }
 
-        // Resize handles (not for desks)
-        if (this.TYPES[obj.type]?.resizable) {
+        // Resize handles — only in edit mode, only for resizable types
+        if (em && this.TYPES[obj.type]?.resizable) {
             ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(dir => {
                 const h = document.createElement('div');
                 h.className = `dsobj-handle dsobj-handle-${dir}`;
@@ -169,27 +296,26 @@ const Designer = {
             });
         }
 
-        el.addEventListener('mousedown', e => {
-            if (e.target.classList.contains('dsobj-handle')) return;
-            e.preventDefault();
-            e.stopPropagation();
-            // Ctrl/Shift: toggle in multi-selection; otherwise single-select
-            if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                this.toggleSelect(obj.id);
-            } else {
-                if (!this.state.selectedIds.includes(obj.id)) {
-                    this.selectSingle(obj.id);
+        // Drag & select — only in edit mode
+        if (em) {
+            el.style.cursor = 'move';
+            el.addEventListener('mousedown', e => {
+                if (e.target.classList.contains('dsobj-handle')) return;
+                e.preventDefault(); e.stopPropagation();
+                if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                    this.toggleSelect(obj.id);
+                } else {
+                    if (!this.state.selectedIds.includes(obj.id)) this.selectSingle(obj.id);
                 }
-            }
-            this.startDrag(e, obj.id);
-        });
-
-        el.addEventListener('dblclick', e => {
-            e.stopPropagation();
-            if (obj.type === 'wall') return;
-            const input = document.getElementById('ds-label-input');
-            if (input) { input.focus(); input.select(); }
-        });
+                this.startDrag(e, obj.id);
+            });
+            el.addEventListener('dblclick', e => {
+                e.stopPropagation();
+                if (obj.type === 'wall') return;
+                const input = document.getElementById('ds-label-input');
+                if (input) { input.focus(); input.select(); }
+            });
+        }
 
         return el;
     },
@@ -241,7 +367,12 @@ const Designer = {
     renderProperties() {
         const panel = document.getElementById('designer-properties');
         if (!panel) return;
-        const { selectedIds } = this.state;
+        const { selectedIds, editMode } = this.state;
+
+        if (!editMode) {
+            panel.innerHTML = `<p class="ds-hint">Click <strong>Locked</strong> in the toolbar to start editing.</p>`;
+            return;
+        }
         if (selectedIds.length === 0) {
             panel.innerHTML = `<p class="ds-hint">Click an object to select it,<br>or drag from the palette.</p>`;
             return;
@@ -257,40 +388,22 @@ const Designer = {
                 <div class="ds-align-title">Align</div>
                 <div class="ds-align-btns">
                   <button class="ds-align-btn" title="Center horizontally (same Y)" onclick="Designer.alignCenterH()">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <line x1="2" y1="10" x2="18" y2="10"/>
-                      <rect x="4" y="6" width="4" height="8" rx="1"/>
-                      <rect x="12" y="4" width="4" height="12" rx="1"/>
-                    </svg>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="2" y1="10" x2="18" y2="10"/><rect x="4" y="6" width="4" height="8" rx="1"/><rect x="12" y="4" width="4" height="12" rx="1"/></svg>
                     <span>H Center</span>
                   </button>
                   <button class="ds-align-btn" title="Center vertically (same X)" onclick="Designer.alignCenterV()">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <line x1="10" y1="2" x2="10" y2="18"/>
-                      <rect x="6" y="4" width="8" height="4" rx="1"/>
-                      <rect x="4" y="12" width="12" height="4" rx="1"/>
-                    </svg>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="10" y1="2" x2="10" y2="18"/><rect x="6" y="4" width="8" height="4" rx="1"/><rect x="4" y="12" width="12" height="4" rx="1"/></svg>
                     <span>V Center</span>
                   </button>
                 </div>
                 <div class="ds-align-title" style="margin-top:8px">Distribute</div>
                 <div class="ds-align-btns">
                   <button class="ds-align-btn" title="Equal spacing horizontally" onclick="Designer.distributeH()">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <line x1="1" y1="4" x2="1" y2="16"/>
-                      <line x1="19" y1="4" x2="19" y2="16"/>
-                      <rect x="4" y="7" width="4" height="6" rx="1"/>
-                      <rect x="12" y="7" width="4" height="6" rx="1"/>
-                    </svg>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="1" y1="4" x2="1" y2="16"/><line x1="19" y1="4" x2="19" y2="16"/><rect x="4" y="7" width="4" height="6" rx="1"/><rect x="12" y="7" width="4" height="6" rx="1"/></svg>
                     <span>H Space</span>
                   </button>
                   <button class="ds-align-btn" title="Equal spacing vertically" onclick="Designer.distributeV()">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-                      <line x1="4" y1="1" x2="16" y2="1"/>
-                      <line x1="4" y1="19" x2="16" y2="19"/>
-                      <rect x="7" y="4" width="6" height="4" rx="1"/>
-                      <rect x="7" y="12" width="6" height="4" rx="1"/>
-                    </svg>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="4" y1="1" x2="16" y2="1"/><line x1="4" y1="19" x2="16" y2="19"/><rect x="7" y="4" width="6" height="4" rx="1"/><rect x="7" y="12" width="6" height="4" rx="1"/></svg>
                     <span>V Space</span>
                   </button>
                 </div>
@@ -300,13 +413,16 @@ const Designer = {
               </div>`;
             return;
         }
+
         const obj = this.state.objects.find(o => o.id === this.state.selectedId);
         if (!obj) { panel.innerHTML = ''; return; }
-        const names = { area: 'Area', desk: 'Desk', wall: 'Wall', box: 'Box' };
+        const isFixed = obj.type === 'fixeddesk';
+        const isDesk = obj.type === 'desk' || isFixed;
+        const names = { area: 'Area', desk: 'Desk', fixeddesk: 'Fixed Desk', wall: 'Wall', box: 'Box' };
         panel.innerHTML = `
             <div class="ds-prop-row">
                 <span class="ds-prop-label">Type</span>
-                <span class="ds-prop-val ds-type-badge ds-type-${obj.type}">${names[obj.type]}</span>
+                <span class="ds-prop-val ds-type-badge ds-type-${isFixed ? 'fixeddesk' : obj.type}">${names[obj.type]}</span>
             </div>
             ${obj.type !== 'wall' ? `
             <div class="ds-prop-row">
@@ -314,11 +430,20 @@ const Designer = {
                 <input type="text" id="ds-label-input" class="ds-label-input"
                     value="${obj.label || ''}" maxlength="12" placeholder="Name\u2026" />
             </div>` : ''}
+            ${isDesk ? `
+            <div class="ds-prop-row">
+                <span class="ds-prop-label">Bookable</span>
+                <label class="ds-toggle-wrap">
+                    <input type="checkbox" id="ds-fixed-toggle" ${isFixed ? '' : 'checked'}
+                        onchange="Designer.toggleFixed()" />
+                    <span class="ds-toggle-label">${isFixed ? 'Fixed (unbookable)' : 'Yes'}</span>
+                </label>
+            </div>` : ''}
             <div class="ds-prop-row">
                 <span class="ds-prop-label">X, Y</span>
                 <span class="ds-prop-val" id="ds-pos-val">${Math.round(obj.x)}, ${Math.round(obj.y)}</span>
             </div>
-            ${obj.type !== 'desk' ? `
+            ${obj.type !== 'desk' && obj.type !== 'fixeddesk' ? `
             <div class="ds-prop-row">
                 <span class="ds-prop-label">W \xd7 H</span>
                 <span class="ds-prop-val" id="ds-size-val">${Math.round(obj.w)} \xd7 ${Math.round(obj.h)}</span>
@@ -334,6 +459,8 @@ const Designer = {
         }
     },
 
+    // ---- Editing Ops ----
+
     applyLabel() {
         const input = document.getElementById('ds-label-input');
         if (!input || !this.state.selectedId) return;
@@ -344,8 +471,18 @@ const Designer = {
         if (lbl) lbl.textContent = obj.label;
     },
 
+    toggleFixed() {
+        const obj = this.state.objects.find(o => o.id === this.state.selectedId);
+        if (!obj || (obj.type !== 'desk' && obj.type !== 'fixeddesk')) return;
+        this._pushHistory();
+        obj.type = obj.type === 'fixeddesk' ? 'desk' : 'fixeddesk';
+        this.render();
+        this.selectSingle(obj.id);
+    },
+
     deleteSelected() {
         if (this.state.selectedIds.length === 0) return;
+        this._pushHistory();
         const del = new Set(this.state.selectedIds);
         this.state.objects = this.state.objects.filter(o => !del.has(o.id));
         this.state.selectedIds = [];
@@ -356,67 +493,61 @@ const Designer = {
 
     // ---- Alignment & Distribution ----
 
-    _selectedObjs() {
-        return this.state.objects.filter(o => this.state.selectedIds.includes(o.id));
-    },
+    _selectedObjs() { return this.state.objects.filter(o => this.state.selectedIds.includes(o.id)); },
 
     _updateObjEl(obj) {
         const el = document.getElementById(`dsobj-${obj.id}`);
         if (el) el.style.cssText = `left:${obj.x}px;top:${obj.y}px;width:${obj.w}px;height:${obj.h}px;`;
     },
 
-    // Align all selected objects so their vertical centers share the same Y
     alignCenterH() {
-        const objs = this._selectedObjs();
-        if (objs.length < 2) return;
+        const objs = this._selectedObjs(); if (objs.length < 2) return;
+        this._pushHistory();
         const avg = objs.reduce((s, o) => s + o.y + o.h / 2, 0) / objs.length;
         objs.forEach(o => { o.y = Math.round(avg - o.h / 2); this._updateObjEl(o); });
         this.renderProperties();
     },
 
-    // Align all selected objects so their horizontal centers share the same X
     alignCenterV() {
-        const objs = this._selectedObjs();
-        if (objs.length < 2) return;
+        const objs = this._selectedObjs(); if (objs.length < 2) return;
+        this._pushHistory();
         const avg = objs.reduce((s, o) => s + o.x + o.w / 2, 0) / objs.length;
         objs.forEach(o => { o.x = Math.round(avg - o.w / 2); this._updateObjEl(o); });
         this.renderProperties();
     },
 
-    // Distribute selected objects with equal horizontal gaps (anchors leftmost & rightmost)
     distributeH() {
-        const objs = this._selectedObjs();
-        if (objs.length < 2) return;
+        const objs = this._selectedObjs(); if (objs.length < 2) return;
+        this._pushHistory();
         objs.sort((a, b) => a.x - b.x);
-        const totalW = objs.reduce((s, o) => s + o.w, 0);
         const span = (objs[objs.length - 1].x + objs[objs.length - 1].w) - objs[0].x;
-        const gap = Math.max(0, (span - totalW) / (objs.length - 1));
+        const gap = Math.max(0, (span - objs.reduce((s, o) => s + o.w, 0)) / (objs.length - 1));
         let cur = objs[0].x;
         objs.forEach(o => { o.x = Math.round(cur); this._updateObjEl(o); cur += o.w + gap; });
         this.renderProperties();
     },
 
-    // Distribute selected objects with equal vertical gaps (anchors topmost & bottommost)
     distributeV() {
-        const objs = this._selectedObjs();
-        if (objs.length < 2) return;
+        const objs = this._selectedObjs(); if (objs.length < 2) return;
+        this._pushHistory();
         objs.sort((a, b) => a.y - b.y);
-        const totalH = objs.reduce((s, o) => s + o.h, 0);
         const span = (objs[objs.length - 1].y + objs[objs.length - 1].h) - objs[0].y;
-        const gap = Math.max(0, (span - totalH) / (objs.length - 1));
+        const gap = Math.max(0, (span - objs.reduce((s, o) => s + o.h, 0)) / (objs.length - 1));
         let cur = objs[0].y;
         objs.forEach(o => { o.y = Math.round(cur); this._updateObjEl(o); cur += o.h + gap; });
         this.renderProperties();
     },
 
+    // ---- Object Creation ----
 
     addObject(type, x, y) {
+        if (!this.state.editMode) return;
         const info = this.TYPES[type] || { w: 80, h: 60, label: 'New' };
-        const deskN = this.state.objects.filter(o => o.type === 'desk').length;
-        const label = type === 'desk' ? `D${deskN + 1}` : info.label;
+        this._pushHistory();
+        const deskN = this.state.objects.filter(o => o.type === 'desk' || o.type === 'fixeddesk').length;
+        const label = (type === 'desk') ? `D${deskN + 1}` : (type === 'fixeddesk') ? `F${deskN + 1}` : info.label;
         const obj = {
-            id: `${type}_${Date.now()}`,
-            type, label,
+            id: `${type}_${Date.now()}`, type, label,
             x: Math.max(0, Math.min(this.CANVAS_W - info.w, x - info.w / 2)),
             y: Math.max(0, Math.min(this.CANVAS_H - info.h, y - info.h / 2)),
             w: info.w, h: info.h,
@@ -429,70 +560,52 @@ const Designer = {
     // ---- Drag & Resize ----
 
     startDrag(e, id) {
-        // Record initial positions of all selected objects for group drag
         const selectedObjs = this.state.objects.filter(o => this.state.selectedIds.includes(o.id));
+        this._pushHistory();
         this.state._drag = {
-            id,
-            sx: e.clientX, sy: e.clientY,
-            starts: selectedObjs.map(o => ({ id: o.id, ox: o.x, oy: o.y })),
+            id, sx: e.clientX, sy: e.clientY,
+            starts: selectedObjs.map(o => ({ id: o.id, ox: o.x, oy: o.y }))
         };
     },
 
     startResize(e, id, handle) {
         const obj = this.state.objects.find(o => o.id === id);
         if (!obj) return;
+        this._pushHistory();
         this.state._resize = { id, handle, sx: e.clientX, sy: e.clientY, ox: obj.x, oy: obj.y, ow: obj.w, oh: obj.h };
     },
 
     // ---- Rubber-band Selection ----
 
     startSelBox(e) {
+        if (!this.state.editMode) return;
         const canvas = document.getElementById('designer-canvas');
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         this.state._selBox = {
-            sx: e.clientX - rect.left,
-            sy: e.clientY - rect.top,
-            ex: e.clientX - rect.left,
-            ey: e.clientY - rect.top,
-            canvasRect: rect,
+            sx: e.clientX - rect.left, sy: e.clientY - rect.top,
+            ex: e.clientX - rect.left, ey: e.clientY - rect.top, canvasRect: rect
         };
-        // Create or reuse selection rect element
-        let selEl = document.getElementById('ds-sel-box');
-        if (!selEl) {
-            selEl = document.createElement('div');
-            selEl.id = 'ds-sel-box';
-            selEl.className = 'ds-sel-box';
-            canvas.appendChild(selEl);
-        }
-        selEl.style.display = 'block';
+        let sel = document.getElementById('ds-sel-box');
+        if (!sel) { sel = document.createElement('div'); sel.id = 'ds-sel-box'; sel.className = 'ds-sel-box'; canvas.appendChild(sel); }
+        sel.style.display = 'block';
         this._updateSelBoxEl();
     },
 
     _updateSelBoxEl() {
-        const s = this.state._selBox;
-        if (!s) return;
-        const el = document.getElementById('ds-sel-box');
-        if (!el) return;
-        const x = Math.min(s.sx, s.ex), y = Math.min(s.sy, s.ey);
-        const w = Math.abs(s.ex - s.sx), h = Math.abs(s.ey - s.sy);
+        const s = this.state._selBox; if (!s) return;
+        const el = document.getElementById('ds-sel-box'); if (!el) return;
+        const x = Math.min(s.sx, s.ex), y = Math.min(s.sy, s.ey), w = Math.abs(s.ex - s.sx), h = Math.abs(s.ey - s.sy);
         el.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;display:block;`;
     },
 
     endSelBox() {
-        const s = this.state._selBox;
-        this.state._selBox = null;
-        const el = document.getElementById('ds-sel-box');
-        if (el) el.style.display = 'none';
+        const s = this.state._selBox; this.state._selBox = null;
+        const el = document.getElementById('ds-sel-box'); if (el) el.style.display = 'none';
         if (!s) return;
-        const x1 = Math.min(s.sx, s.ex), y1 = Math.min(s.sy, s.ey);
-        const x2 = Math.max(s.sx, s.ex), y2 = Math.max(s.sy, s.ey);
-        // If selection is tiny, treat as click-to-deselect
+        const x1 = Math.min(s.sx, s.ex), y1 = Math.min(s.sy, s.ey), x2 = Math.max(s.sx, s.ex), y2 = Math.max(s.sy, s.ey);
         if (x2 - x1 < 4 && y2 - y1 < 4) { this.deselectAll(); return; }
-        // Find all objects overlapping the selection rectangle
-        const hit = this.state.objects.filter(o =>
-            o.x < x2 && o.x + o.w > x1 && o.y < y2 && o.y + o.h > y1
-        ).map(o => o.id);
+        const hit = this.state.objects.filter(o => o.x < x2 && o.x + o.w > x1 && o.y < y2 && o.y + o.h > y1).map(o => o.id);
         if (hit.length > 0) this.selectMultiple(hit); else this.deselectAll();
     },
 
@@ -500,21 +613,16 @@ const Designer = {
 
     onMouseMove(e) {
         if (this.state._drag) {
-            const d = this.state._drag;
-            const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+            const d = this.state._drag, dx = e.clientX - d.sx, dy = e.clientY - d.sy;
             d.starts.forEach(({ id, ox, oy }) => {
-                const obj = this.state.objects.find(o => o.id === id);
-                if (!obj) return;
+                const obj = this.state.objects.find(o => o.id === id); if (!obj) return;
                 obj.x = Math.max(0, Math.min(this.CANVAS_W - obj.w, ox + dx));
                 obj.y = Math.max(0, Math.min(this.CANVAS_H - obj.h, oy + dy));
                 const el = document.getElementById(`dsobj-${id}`);
                 if (el) { el.style.left = obj.x + 'px'; el.style.top = obj.y + 'px'; }
             });
             const posEl = document.getElementById('ds-pos-val');
-            if (posEl) {
-                const primary = this.state.objects.find(o => o.id === d.id);
-                if (primary) posEl.textContent = `${Math.round(primary.x)}, ${Math.round(primary.y)}`;
-            }
+            if (posEl) { const p = this.state.objects.find(o => o.id === d.id); if (p) posEl.textContent = `${Math.round(p.x)}, ${Math.round(p.y)}`; }
         }
         if (this.state._resize) {
             const r = this.state._resize, obj = this.state.objects.find(o => o.id === r.id);
@@ -528,72 +636,72 @@ const Designer = {
                 obj.x = nx; obj.y = ny; obj.w = nw; obj.h = nh;
                 const el = document.getElementById(`dsobj-${r.id}`);
                 if (el) el.style.cssText = `left:${nx}px;top:${ny}px;width:${nw}px;height:${nh}px;`;
-                const sizeEl = document.getElementById('ds-size-val');
-                if (sizeEl) sizeEl.textContent = `${Math.round(nw)} \xd7 ${Math.round(nh)}`;
+                const sz = document.getElementById('ds-size-val'); if (sz) sz.textContent = `${Math.round(nw)}\xd7${Math.round(nh)}`;
             }
         }
         if (this.state._selBox) {
             const canvas = document.getElementById('designer-canvas');
             const rect = canvas ? canvas.getBoundingClientRect() : this.state._selBox.canvasRect;
-            this.state._selBox.ex = e.clientX - rect.left;
-            this.state._selBox.ey = e.clientY - rect.top;
+            this.state._selBox.ex = e.clientX - rect.left; this.state._selBox.ey = e.clientY - rect.top;
             this._updateSelBoxEl();
         }
     },
 
     onMouseUp() {
-        if (this.state._drag || this.state._resize) {
-            this.state._drag = null;
-            this.state._resize = null;
-            this.renderProperties();
-        }
-        if (this.state._selBox) {
-            this.endSelBox();
-        }
+        if (this.state._drag || this.state._resize) { this.state._drag = null; this.state._resize = null; this.renderProperties(); }
+        if (this.state._selBox) this.endSelBox();
     },
 
     // ---- Palette & Canvas Events ----
 
     setupPalette() {
+        const em = this.state.editMode;
         document.querySelectorAll('.ds-palette-item').forEach(item => {
-            item.addEventListener('dragstart', e => {
+            item.style.opacity = em ? '' : '0.4';
+            item.style.pointerEvents = em ? '' : 'none';
+            // Re-attach dragstart every time (cloneNode trick avoided — just overwrite)
+            item.ondragstart = em ? (e => {
                 this.state._palType = item.dataset.type;
                 e.dataTransfer.effectAllowed = 'copy';
                 e.dataTransfer.setData('text/plain', item.dataset.type);
-            });
+            }) : (e => e.preventDefault());
         });
         const canvas = document.getElementById('designer-canvas');
         if (!canvas) return;
-        canvas.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-        canvas.addEventListener('drop', e => {
+        // Remove old listeners cleanly by replacing with a clone
+        const fresh = canvas.cloneNode(true);
+        canvas.parentNode.replaceChild(fresh, canvas);
+
+        fresh.addEventListener('dragover', e => { if (em) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+        fresh.addEventListener('drop', e => {
+            if (!em) return;
             e.preventDefault();
             const type = e.dataTransfer.getData('text/plain') || this.state._palType;
             if (!type) return;
-            const rect = canvas.getBoundingClientRect();
+            const rect = fresh.getBoundingClientRect();
             this.addObject(type, e.clientX - rect.left, e.clientY - rect.top);
         });
-        // Canvas background click: start rubber-band selection
-        canvas.addEventListener('mousedown', e => {
-            if (e.target !== canvas) return; // only fire on background
-            e.preventDefault();
-            this.startSelBox(e);
+        fresh.addEventListener('mousedown', e => {
+            if (!em || e.target !== fresh) return;
+            e.preventDefault(); this.startSelBox(e);
         });
     },
 
-    // ---- Global Listeners (called once) ----
+    // ---- Global Listeners (once) ----
 
     setupGlobalListeners() {
         document.addEventListener('mousemove', e => this.onMouseMove(e));
         document.addEventListener('mouseup', () => this.onMouseUp());
         document.addEventListener('keydown', e => {
-            if ((e.key === 'Delete' || e.key === 'Backspace') &&
-                this.state.selectedIds.length > 0 &&
-                !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
-                this.deleteSelected();
-            }
-            if ((e.key === 'a' || e.key === 'A') && (e.ctrlKey || e.metaKey)) {
-                e.preventDefault(); // Ctrl+A = select all
-                this.selectMultiple(this.state.objects.map(o => o.id));
+            if (!this.state.editMode) return;
+            const tag = document.activeElement?.tagName;
+            if (['INPUT', 'TEXTAREA'].includes(tag)) return;
+            if ((e.key === 'Delete' || e.key === 'Backspace') && this.state.selectedIds.length > 0) { this.deleteSelected(); return; }
+            if ((e.ctrlKey || e.metaKey)) {
+                if (e.key === 'a' || e.key === 'A') { e.preventDefault(); this.selectMultiple(this.state.objects.map(o => o.id)); }
+                if (e.key === 'c' || e.key === 'C') { e.preventDefault(); this.copy(); }
+                if (e.key === 'v' || e.key === 'V') { e.preventDefault(); this.paste(); }
+                if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); this.undo(); }
             }
         });
         this._listenersSetup = true;
