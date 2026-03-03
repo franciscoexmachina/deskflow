@@ -304,9 +304,9 @@ const Designer = {
                 e.preventDefault(); e.stopPropagation();
                 if (e.ctrlKey || e.metaKey || e.shiftKey) {
                     this.toggleSelect(obj.id);
-                } else {
-                    if (!this.state.selectedIds.includes(obj.id)) this.selectSingle(obj.id);
+                    return; // Ctrl+click = toggle only, no drag
                 }
+                if (!this.state.selectedIds.includes(obj.id)) this.selectSingle(obj.id);
                 this.startDrag(e, obj.id);
             });
             el.addEventListener('dblclick', e => {
