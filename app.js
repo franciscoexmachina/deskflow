@@ -1625,9 +1625,9 @@ function openUserModal(userId = null) {
         ${FloorAPI.getAll().map(f => {
         const checked = !user || !user.allowedFloors || user.allowedFloors.includes(f.id);
         return `
-            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer; font-size: 0.88rem;">
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer; font-size: 0.88rem; white-space: nowrap; justify-content: flex-start;">
               <input type="checkbox" class="modal-floor-checkbox" value="${f.id}" ${checked ? 'checked' : ''} />
-              ${f.name}
+              <span style="overflow: hidden; text-overflow: ellipsis;">${f.name}</span>
             </label>
           `;
     }).join('')}
