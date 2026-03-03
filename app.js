@@ -20,13 +20,17 @@ let audioCtx = null;
 
 // ===== INIT =====
 window.addEventListener('DOMContentLoaded', async () => {
-    // Load local defaults first, then overwrite with cloud truth
-    initData();
-    await CloudSync.fetchAll();
-
-    const user = SessionAPI.getCurrentUser();
-    if (user) {
-        loginUser(user);
+    const session = SessionAPI.get();
+    if (session && session.orgId) {
+        setOrg(session.orgId);
+        await initData();
+        await CloudSync.fetchAll();
+        const user = UserAPI.getById(session.userId);
+        if (user) {
+            loginUser(user);
+        } else {
+            showScreen('login-screen');
+        }
     } else {
         showScreen('login-screen');
     }
@@ -90,22 +94,115 @@ function showScreen(id) {
 }
 
 // ===== AUTH =====
-function handleLogin(e) {
+let isCreateOrgMode = false;
+
+function toggleAuthMode() {
+    isCreateOrgMode = !isCreateOrgMode;
+    const btn = document.getElementById('login-submit-btn');
+    const txt = document.getElementById('auth-toggle-text');
+    const title = document.querySelector('.login-card h1');
+    const sub = document.querySelector('.login-sub');
+    const passLabel = document.getElementById('login-password-label');
+    const orgInput = document.getElementById('login-org');
+    const errEl = document.getElementById('login-error');
+    errEl.classList.add('hidden');
+
+    if (isCreateOrgMode) {
+        btn.textContent = 'Create Organization';
+        txt.textContent = 'Back to Sign In';
+        title.textContent = 'New Workspace';
+        sub.textContent = 'Create a workspace and admin account';
+        passLabel.textContent = 'Admin Password';
+        orgInput.value = '';
+    } else {
+        btn.textContent = 'Sign In';
+        txt.textContent = 'Create new organization';
+        title.textContent = 'Welcome back';
+        sub.textContent = 'Sign in to book your workspace';
+        passLabel.textContent = 'Password';
+        orgInput.value = 'demoorg';
+    }
+}
+
+async function handleAuth(e) {
     e.preventDefault();
+    const orgId = document.getElementById('login-org').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value;
-    const user = UserAPI.getByUsername(username);
     const errEl = document.getElementById('login-error');
 
-    if (!user || user.password !== password) {
+    function showError(msg) {
+        errEl.textContent = msg;
         errEl.classList.remove('hidden');
         document.getElementById('login-form').classList.add('shake');
         setTimeout(() => document.getElementById('login-form').classList.remove('shake'), 500);
+    }
+
+    if (!orgId) {
+        showError('Organization ID is required (letters/numbers/hyphens only)');
         return;
     }
-    errEl.classList.add('hidden');
-    SessionAPI.set(user.id);
-    loginUser(user);
+
+    const btn = document.getElementById('login-submit-btn');
+    const origText = btn.textContent;
+    btn.textContent = 'Please wait...';
+    btn.disabled = true;
+    const resetBtn = () => { btn.textContent = origText; btn.disabled = false; };
+
+    // 1. Set the active Org ID so data APIs point to the right partition
+    setOrg(orgId);
+
+    // 2. Fetch users for this org to map presence
+    await CloudSync.fetchKey(`df_${orgId}_users`);
+
+    if (isCreateOrgMode) {
+        const existingUsers = Store.get(STORAGE_KEYS.USERS, null);
+        if (existingUsers && existingUsers.length > 0) {
+            showError('Organization already exists');
+            resetBtn();
+            return;
+        }
+
+        // Setup new org
+        await initData({ username, password });
+        // Push initial defaults to cloud immediately
+        ['USERS', 'FLOORS', 'DESKS', 'FLOOR_LAYOUTS', 'BOOKINGS'].forEach(base => {
+            const data = Store.get(STORAGE_KEYS[base], null);
+            if (data) CloudSync.push(STORAGE_KEYS[base], data);
+        });
+
+        const user = UserAPI.getByUsername(username);
+        SessionAPI.set(user.id, orgId);
+        resetBtn();
+        loginUser(user);
+    } else {
+        // Sign In mode
+        const existingUsers = Store.get(STORAGE_KEYS.USERS, null);
+        if (!existingUsers || existingUsers.length === 0) {
+            if (orgId === 'demoorg') {
+                // Migrate defaults transparently if signing into demoorg and empty
+                await initData();
+            } else {
+                showError('Organization not found');
+                resetBtn();
+                return;
+            }
+        }
+
+        const user = UserAPI.getByUsername(username);
+        if (!user || user.password !== password) {
+            showError('Invalid username or password');
+            resetBtn();
+            return;
+        }
+
+        errEl.classList.add('hidden');
+        SessionAPI.set(user.id, orgId);
+        resetBtn();
+        // Since we didn't do fetchAll in boot layer due to lacking orgId, fetch everything now before UI appears
+        await CloudSync.fetchAll();
+        loginUser(user);
+    }
 }
 
 let cloudPollInterval = null;
@@ -151,6 +248,12 @@ function setupUI() {
     const avatarEl = document.getElementById('user-avatar-sidebar');
     avatarEl.textContent = currentUser.initials;
     avatarEl.className = `user-avatar role-${currentUser.role}`;
+
+    // Update the sidebar logo text to show the active organization
+    const logoText = document.querySelector('.sidebar-header .login-logo span');
+    if (logoText) {
+        logoText.textContent = `DeskFlow: ${CURRENT_ORG}`;
+    }
     document.getElementById('user-name-sidebar').textContent = currentUser.name;
     document.getElementById('user-role-sidebar').textContent = currentUser.role === 'admin' ? '⭐ Admin' : 'User';
 

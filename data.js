@@ -4,15 +4,27 @@
 // Firebase Realtime Database — set this to your project's database URL
 const FIREBASE_URL = 'https://deskflow-app-default-rtdb.asia-southeast1.firebasedatabase.app';
 
-// Keys that are shared across all users (session is deliberately excluded)
-const CLOUD_KEYS = ['df_users', 'df_floors', 'df_desks', 'df_bookings', 'df_floor_layouts'];
+// Global organization state
+let CURRENT_ORG = 'demoorg';
+function setOrg(orgId) {
+    if (orgId) CURRENT_ORG = orgId;
+}
 
-const STORAGE_KEYS = {
+// Base keys used for both the suffix of local keys and the leaf of cloud paths
+const BASE_KEYS = {
     USERS: 'df_users',
     BOOKINGS: 'df_bookings',
     FLOORS: 'df_floors',
     DESKS: 'df_desks',
     FLOOR_LAYOUTS: 'df_floor_layouts',
+};
+
+const STORAGE_KEYS = {
+    get USERS() { return `${CURRENT_ORG}_${BASE_KEYS.USERS}`; },
+    get BOOKINGS() { return `${CURRENT_ORG}_${BASE_KEYS.BOOKINGS}`; },
+    get FLOORS() { return `${CURRENT_ORG}_${BASE_KEYS.FLOORS}`; },
+    get DESKS() { return `${CURRENT_ORG}_${BASE_KEYS.DESKS}`; },
+    get FLOOR_LAYOUTS() { return `${CURRENT_ORG}_${BASE_KEYS.FLOOR_LAYOUTS}`; },
     SESSION: 'df_session',
 };
 
@@ -388,37 +400,48 @@ const Store = {
 // ===== CLOUD SYNC (Firebase Realtime Database REST API) =====
 const CloudSync = {
     // Fetch all shared data from Firebase and update localStorage.
-    // Called once on init (awaited) and periodically thereafter.
     async fetchAll() {
-        await Promise.all(CLOUD_KEYS.map(async key => {
+        await Promise.all(Object.values(BASE_KEYS).map(async baseKey => {
             try {
-                const r = await fetch(`${FIREBASE_URL}/${key}.json`, { cache: 'no-store' });
+                const cloudPath = `orgs/${CURRENT_ORG}/${baseKey}`;
+                const localKey = `${CURRENT_ORG}_${baseKey}`;
+                const r = await fetch(`${FIREBASE_URL}/${cloudPath}.json`, { cache: 'no-store' });
                 if (!r.ok) return;
                 const data = await r.json();
                 if (data !== null) {
-                    localStorage.setItem(key, JSON.stringify(data));
+                    localStorage.setItem(localKey, JSON.stringify(data));
                 }
             } catch { /* network unavailable — use local cache */ }
         }));
     },
 
     // Fetch a single key from Firebase and update localStorage.
-    // Used for pre-write freshness checks (faster than fetchAll).
-    async fetchKey(key) {
+    async fetchKey(localKey) {
+        const prefix = `${CURRENT_ORG}_`;
+        if (!localKey.startsWith(prefix)) return;
+        const baseKey = localKey.slice(prefix.length);
+        if (!Object.values(BASE_KEYS).includes(baseKey)) return;
+
         try {
-            const r = await fetch(`${FIREBASE_URL}/${key}.json`, { cache: 'no-store' });
+            const cloudPath = `orgs/${CURRENT_ORG}/${baseKey}`;
+            const r = await fetch(`${FIREBASE_URL}/${cloudPath}.json`, { cache: 'no-store' });
             if (!r.ok) return;
             const data = await r.json();
             if (data !== null) {
-                localStorage.setItem(key, JSON.stringify(data));
+                localStorage.setItem(localKey, JSON.stringify(data));
             }
         } catch { /* network unavailable — use local cache */ }
     },
 
     // Push a single key to Firebase (fire-and-forget).
-    push(key, val) {
-        if (!CLOUD_KEYS.includes(key)) return;
-        fetch(`${FIREBASE_URL}/${key}.json`, {
+    push(localKey, val) {
+        const prefix = `${CURRENT_ORG}_`;
+        if (!localKey.startsWith(prefix)) return;
+        const baseKey = localKey.slice(prefix.length);
+        if (!Object.values(BASE_KEYS).includes(baseKey)) return;
+
+        const cloudPath = `orgs/${CURRENT_ORG}/${baseKey}`;
+        fetch(`${FIREBASE_URL}/${cloudPath}.json`, {
             method: 'PUT',
             body: JSON.stringify(val),
             headers: { 'Content-Type': 'application/json' },
@@ -427,11 +450,52 @@ const CloudSync = {
 };
 
 // ===== INITIALIZE DATA =====
-// Uses setLocal() so defaults are written only to localStorage and never
-// pushed to Firebase — CloudSync.fetchAll() will overwrite with real data.
-function initData() {
+// Seeds defaults (or completely new admin credentials) and handles legacy data migrations automatically.
+async function initData(adminParams = null) {
+    // Migration: if we are setting up 'demoorg' and there is no data...
+    if (CURRENT_ORG === 'demoorg' && !localStorage.getItem(STORAGE_KEYS.USERS)) {
+        let migrated = false;
+        // 1. Check if legacy local cache exists (for instant offline migration)
+        if (localStorage.getItem(BASE_KEYS.USERS)) {
+            Object.values(BASE_KEYS).forEach(base => {
+                const oldVal = localStorage.getItem(base);
+                if (oldVal) {
+                    localStorage.setItem(`demoorg_${base}`, oldVal);
+                    CloudSync.push(`demoorg_${base}`, JSON.parse(oldVal));
+                }
+            });
+            migrated = true;
+            console.log('Migrated legacy local data to demoorg partition.');
+        } else {
+            // 2. Check if legacy cloud data exists
+            try {
+                const r = await fetch(`${FIREBASE_URL}/${BASE_KEYS.USERS}.json`);
+                const legacyCloudUsers = await r.json();
+                if (legacyCloudUsers) {
+                    await Promise.all(Object.values(BASE_KEYS).map(async base => {
+                        const r2 = await fetch(`${FIREBASE_URL}/${base}.json`);
+                        const data = await r2.json();
+                        if (data !== null) {
+                            localStorage.setItem(`demoorg_${base}`, JSON.stringify(data));
+                            CloudSync.push(`demoorg_${base}`, data);
+                        }
+                    }));
+                    migrated = true;
+                    console.log('Migrated legacy cloud data to demoorg partition.');
+                }
+            } catch (e) { }
+        }
+
+        if (migrated) return; // Skip seeding defaults since we migrated real data
+    }
+
     if (!Store.get(STORAGE_KEYS.USERS, null)) {
-        Store.setLocal(STORAGE_KEYS.USERS, DEFAULT_USERS);
+        if (adminParams) {
+            const adminUser = { id: 'u1', username: adminParams.username, password: adminParams.password, name: 'Admin User', role: 'admin', initials: 'AD', maxBookingDays: 365 };
+            Store.setLocal(STORAGE_KEYS.USERS, [adminUser]);
+        } else {
+            Store.setLocal(STORAGE_KEYS.USERS, DEFAULT_USERS);
+        }
     }
     if (!Store.get(STORAGE_KEYS.FLOORS, null)) {
         Store.setLocal(STORAGE_KEYS.FLOORS, DEFAULT_FLOORS);
@@ -714,7 +778,7 @@ const BookingAPI = {
 // ===== SESSION API =====
 const SessionAPI = {
     get() { return Store.get(STORAGE_KEYS.SESSION, null); },
-    set(userId) { Store.set(STORAGE_KEYS.SESSION, { userId, loginAt: new Date().toISOString() }); },
+    set(userId, orgId) { Store.set(STORAGE_KEYS.SESSION, { userId, orgId, loginAt: new Date().toISOString() }); },
     clear() { localStorage.removeItem(STORAGE_KEYS.SESSION); },
     getCurrentUser() {
         const session = this.get();
@@ -722,6 +786,3 @@ const SessionAPI = {
         return UserAPI.getById(session.userId);
     },
 };
-
-// Initialize on load
-initData();

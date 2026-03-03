@@ -41,25 +41,31 @@
       </div>
       <h1>Welcome back</h1>
       <p class="login-sub">Sign in to book your workspace</p>
-      <form id="login-form" onsubmit="handleLogin(event)">
+      <form id="login-form" onsubmit="handleAuth(event)">
+        <div class="field-group">
+          <label for="login-org">Organization ID</label>
+          <input type="text" id="login-org" placeholder="e.g. acmeCorp" value="demoorg" required />
+        </div>
         <div class="field-group">
           <label for="login-username">Username</label>
           <input type="text" id="login-username" placeholder="Enter your username" autocomplete="username" required />
         </div>
         <div class="field-group">
-          <label for="login-password">Password</label>
+          <label id="login-password-label" for="login-password">Password</label>
           <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password"
             required />
         </div>
-        <div id="login-error" class="error-msg hidden">Invalid username or password</div>
-        <button type="submit" class="btn-primary btn-full">Sign In</button>
+        <div id="login-error" class="error-msg hidden">Invalid username, password, or organization</div>
+        <button type="submit" id="login-submit-btn" class="btn-primary btn-full">Sign In</button>
       </form>
-      <div class="login-hint">
-        <span>Demo</span>
+      <div class="login-hint" style="margin-top: 16px; cursor: pointer; color: var(--accent-primary);"
+        onclick="toggleAuthMode()">
+        <span id="auth-toggle-text">Create new organization</span>
       </div>
+
       <div
         style="position: absolute; bottom: 12px; right: 16px; font-size: 0.65rem; color: rgba(255,255,255,0.3); font-weight: 600;">
-        v9.0.0</div>
+        v10.0.0</div>
     </div>
   </div>
 
@@ -300,9 +306,9 @@
       }
     })();
   </script>
-  <script src="data.js?v=9"></script>
-  <script src="designer.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="data.js?v=10"></script>
+  <script src="designer.js?v=10"></script>
+  <script src="app.js?v=10"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       var mc = document.getElementById('main-content');
