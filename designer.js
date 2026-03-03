@@ -371,7 +371,7 @@ const Designer = {
         const { selectedIds, editMode } = this.state;
 
         if (!editMode) {
-            panel.innerHTML = `<p class="ds-hint">Click <strong>Locked</strong> in the toolbar to start editing.</p>`;
+            panel.innerHTML = `<p class="ds-hint">Click <strong>Edit</strong> in the toolbar to start editing.</p>`;
             return;
         }
         if (selectedIds.length === 0) {
@@ -429,7 +429,7 @@ const Designer = {
             <div class="ds-prop-row">
                 <span class="ds-prop-label">Label</span>
                 <input type="text" id="ds-label-input" class="ds-label-input"
-                    value="${obj.label || ''}" maxlength="12" placeholder="Name\u2026" />
+                    value="${obj.label || ''}" maxlength="30" placeholder="Name\u2026" />
             </div>` : ''}
             ${isDesk ? `
             <div class="ds-prop-row">

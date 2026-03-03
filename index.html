@@ -59,7 +59,7 @@
       </div>
       <div
         style="position: absolute; bottom: 12px; right: 16px; font-size: 0.65rem; color: rgba(255,255,255,0.3); font-weight: 600;">
-        v8.0.0</div>
+        v9.0.0</div>
     </div>
   </div>
 
@@ -300,16 +300,16 @@
       }
     })();
   </script>
-  <script src="data.js?v=8"></script>
-  <script src="designer.js?v=8"></script>
-  <script src="app.js?v=8"></script>
+  <script src="data.js?v=9"></script>
+  <script src="designer.js?v=9"></script>
+  <script src="app.js?v=9"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       var mc = document.getElementById('main-content');
       if (!mc || document.getElementById('view-designer')) return;
       var ds = document.createElement('div');
       ds.className = 'view hidden'; ds.id = 'view-designer';
-      ds.innerHTML = '<div class="designer-toolbar"><div class="designer-floor-tabs" id="designer-floor-tabs"></div><div class="designer-toolbar-actions" id="designer-toolbar-actions"></div></div><div class="designer-layout"><div class="designer-palette"><div class="ds-palette-title">Palette</div><div class="ds-palette-items"><div class="ds-palette-item" draggable="true" data-type="area"><div class="ds-pal-preview ds-pal-area"></div><div class="ds-pal-text"><span>Area</span><small>Room / zone</small></div></div><div class="ds-palette-item" draggable="true" data-type="desk"><div class="ds-pal-preview ds-pal-desk"></div><div class="ds-pal-text"><span>Desk</span><small>Bookable desk</small></div></div><div class="ds-palette-item" draggable="true" data-type="fixeddesk"><div class="ds-pal-preview ds-pal-fixeddesk"></div><div class="ds-pal-text"><span>Fixed Desk</span><small>Unbookable</small></div></div><div class="ds-palette-item" draggable="true" data-type="wall"><div class="ds-pal-preview ds-pal-wall"></div><div class="ds-pal-text"><span>Wall</span><small>Structural</small></div></div><div class="ds-palette-item" draggable="true" data-type="box"><div class="ds-pal-preview ds-pal-box"></div><div class="ds-pal-text"><span>Box</span><small>Furniture</small></div></div></div><div class="ds-palette-title" style="margin-top:16px">Selected</div><div id="designer-properties" class="designer-properties"><p class="ds-hint">Click Locked in toolbar to start editing.</p></div><div class="ds-help"><small>Ctrl+C copy &bull; Ctrl+V paste &bull; Ctrl+Z undo<br>Ctrl+A select all &bull; Delete removes</small></div></div><div class="designer-canvas-wrap"><div class="designer-canvas" id="designer-canvas"></div></div></div>';
+      ds.innerHTML = '<div class="designer-toolbar"><div class="designer-floor-tabs" id="designer-floor-tabs"></div><div class="designer-toolbar-actions" id="designer-toolbar-actions"></div></div><div class="designer-layout"><div class="designer-palette"><div class="ds-palette-title">Palette</div><div class="ds-palette-items"><div class="ds-palette-item" draggable="true" data-type="area"><div class="ds-pal-preview ds-pal-area"></div><div class="ds-pal-text"><span>Area</span><small>Room / zone</small></div></div><div class="ds-palette-item" draggable="true" data-type="desk"><div class="ds-pal-preview ds-pal-desk"></div><div class="ds-pal-text"><span>Desk</span><small>Bookable desk</small></div></div><div class="ds-palette-item" draggable="true" data-type="fixeddesk"><div class="ds-pal-preview ds-pal-fixeddesk"></div><div class="ds-pal-text"><span>Fixed Desk</span><small>Unbookable</small></div></div><div class="ds-palette-item" draggable="true" data-type="wall"><div class="ds-pal-preview ds-pal-wall"></div><div class="ds-pal-text"><span>Wall</span><small>Structural</small></div></div><div class="ds-palette-item" draggable="true" data-type="box"><div class="ds-pal-preview ds-pal-box"></div><div class="ds-pal-text"><span>Box</span><small>Furniture</small></div></div></div><div class="ds-palette-title" style="margin-top:16px">Selected</div><div id="designer-properties" class="designer-properties"><p class="ds-hint">Click Edit in toolbar to start editing.</p></div><div class="ds-help"><small>Ctrl+C copy &bull; Ctrl+V paste &bull; Ctrl+Z undo<br>Ctrl+A select all &bull; Delete removes</small></div></div><div class="designer-canvas-wrap"><div class="designer-canvas" id="designer-canvas"></div></div></div>';
       mc.appendChild(ds);
     });
   </script>
