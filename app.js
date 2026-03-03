@@ -327,19 +327,8 @@ function renderFloorCanvas() {
         canvas.appendChild(el);
     });
 
-    // Draw boxes (labelled generic objects)
-    (layout.boxes || []).forEach(box => {
-        const el = document.createElement('div');
-        el.className = 'floor-box';
-        el.style.cssText = `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px;`;
-        if (box.label) {
-            const lbl = document.createElement('div');
-            lbl.className = 'floor-box-label';
-            lbl.textContent = box.label;
-            el.appendChild(lbl);
-        }
-        canvas.appendChild(el);
-    });
+    // Draw boxes after bookingMap is built below — see deferred rendering
+    const boxesToRender = layout.boxes || [];
 
     const viewDates = filterDates.length > 0 ? filterDates : selectedDates;
 
@@ -417,6 +406,171 @@ function renderFloorCanvas() {
 
         canvas.appendChild(deskEl);
     });
+
+    // Draw boxes — deferred so bookingMap is ready
+    boxesToRender.forEach(box => {
+        const boxBookings = bookingMap[box.id] || {};
+        const bookedDates = Object.keys(boxBookings);
+        const isBooked = bookedDates.length > 0;
+
+        const el = document.createElement('div');
+        el.className = 'floor-box';
+        el.id = `box-${box.id}`;
+        el.style.cssText = `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px;`;
+
+        if (isBooked) {
+            const booker = UserAPI.getById(boxBookings[bookedDates[0]].userId);
+            el.classList.add('floor-box-booked');
+            const initSpan = document.createElement('div');
+            initSpan.className = 'floor-box-initials';
+            initSpan.textContent = booker ? booker.initials : '?';
+            el.appendChild(initSpan);
+        } else if (currentUser.role === 'admin') {
+            el.classList.add('floor-box-available');
+        }
+
+        if (box.label) {
+            const lbl = document.createElement('div');
+            lbl.className = 'floor-box-label';
+            lbl.textContent = box.label;
+            el.appendChild(lbl);
+        }
+
+        if (currentUser.role === 'admin') {
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', () => openBoxModal(box, boxBookings));
+        }
+        canvas.appendChild(el);
+    });
+}
+
+// ===== BOX MODAL (admin-only booking for generic boxes) =====
+function openBoxModal(box, boxBookings) {
+    const overlay = document.getElementById('desk-modal-overlay');
+    const titleEl = document.getElementById('desk-modal-title');
+    const bodyEl = document.getElementById('desk-modal-body');
+    const footerEl = document.getElementById('desk-modal-footer');
+
+    const floor = FloorAPI.getAll().find(f => f.id === currentFloorId);
+    titleEl.textContent = `${box.label || 'Box'} — ${floor ? floor.name : ''}`;
+
+    const viewDates = selectedDates.length > 0 ? selectedDates : [];
+    let html = '<div class="desk-modal-info">';
+    html += `<div class="desk-modal-row"><span class="label">Item</span><span class="value">${box.label || '(unnamed box)'}</span></div>`;
+    html += `<div class="desk-modal-row"><span class="label">Floor</span><span class="value">${floor ? floor.name : ''}</span></div>`;
+    html += `<div class="desk-modal-row"><span class="label">Bookable by</span><span class="value">Admins only</span></div>`;
+
+    if (viewDates.length === 0) {
+        // Admin date picker
+        html += `
+          <div class="field-group" style="margin-top:10px;">
+            <label>Book for dates</label>
+            <div class="admin-date-picker">
+              <input type="date" id="box-date-1" />
+              <input type="date" id="box-date-2" />
+              <input type="date" id="box-date-3" />
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Book for user</label>
+            <select id="box-booking-user">
+              ${UserAPI.getAll().map(u => `<option value="${u.id}"${u.id === currentUser.id ? ' selected' : ''}>${u.name} (${u.role})</option>`).join('')}
+            </select>
+          </div>`;
+        html += '</div>';
+        bodyEl.innerHTML = html;
+        footerEl.innerHTML = '';
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'btn-secondary'; closeBtn.textContent = 'Cancel';
+        closeBtn.addEventListener('click', closeDeskModalDirect);
+        footerEl.appendChild(closeBtn);
+        const bookBtn = document.createElement('button');
+        bookBtn.className = 'btn-primary'; bookBtn.textContent = 'Book';
+        bookBtn.addEventListener('click', () => {
+            const d1 = document.getElementById('box-date-1')?.value;
+            const d2 = document.getElementById('box-date-2')?.value;
+            const d3 = document.getElementById('box-date-3')?.value;
+            const userId = document.getElementById('box-booking-user')?.value;
+            const dates = [d1, d2, d3].filter(Boolean);
+            if (!dates.length) { showToast('Select at least one date', 'error'); return; }
+            handleBookBox(box.id, dates, userId);
+        });
+        footerEl.appendChild(bookBtn);
+        overlay.classList.remove('hidden');
+        return;
+    }
+
+    // Show date status
+    html += `<div style="margin-top:10px;"><div class="desk-booking-dates">`;
+    viewDates.forEach(dateStr => {
+        const b = boxBookings[dateStr];
+        if (b) {
+            const booker = UserAPI.getById(b.userId);
+            html += `<div class="desk-date-entry"><span>${formatDate(dateStr)}</span>
+              <span class="booked-by" style="color:var(--desk-admin)">Booked: ${booker ? booker.name : 'Unknown'}</span></div>`;
+        } else {
+            html += `<div class="desk-date-entry"><span>${formatDate(dateStr)}</span>
+              <span style="color:var(--accent-green)">Available</span></div>`;
+        }
+    });
+    html += `</div></div></div>`;
+    bodyEl.innerHTML = html;
+    footerEl.innerHTML = '';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'btn-secondary'; closeBtn.textContent = 'Close';
+    closeBtn.addEventListener('click', closeDeskModalDirect);
+    footerEl.appendChild(closeBtn);
+
+    const bookableDates = viewDates.filter(d => !boxBookings[d]);
+    if (bookableDates.length > 0) {
+        const bookBtn = document.createElement('button');
+        bookBtn.className = 'btn-primary';
+        bookBtn.textContent = `Book ${bookableDates.length} Date${bookableDates.length > 1 ? 's' : ''}`;
+        bookBtn.addEventListener('click', () => handleBookBox(box.id, [...bookableDates], currentUser.id));
+        footerEl.appendChild(bookBtn);
+    }
+
+    const bookedDates = viewDates.filter(d => boxBookings[d]);
+    if (bookedDates.length > 0) {
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn-danger';
+        cancelBtn.textContent = `Cancel Booking${bookedDates.length > 1 ? 's' : ''}`;
+        cancelBtn.addEventListener('click', () => {
+            bookedDates.forEach(d => BookingAPI.unbook(currentFloorId, box.id, d));
+            closeDeskModalDirect();
+            renderFloor();
+            showToast('Box booking cancelled', 'info');
+        });
+        footerEl.appendChild(cancelBtn);
+    }
+    overlay.classList.remove('hidden');
+}
+
+async function handleBookBox(boxId, dates, userId) {
+    showToast('Checking availability…', 'info');
+    await CloudSync.fetchKey('df_bookings');
+
+    const conflicts = dates.filter(d => {
+        const ex = BookingAPI.getBooking(currentFloorId, boxId, d);
+        return ex && ex.userId !== userId;
+    });
+    if (conflicts.length > 0) {
+        closeDeskModalDirect();
+        renderFloor();
+        showToast('❌ Box already booked on those date(s).', 'error');
+        return;
+    }
+
+    let booked = 0;
+    dates.forEach(d => { if (BookingAPI.book(currentFloorId, boxId, d, userId)) booked++; });
+    closeDeskModalDirect();
+    if (booked > 0) {
+        renderFloor();
+        showToast(`Box booked for ${booked} date${booked > 1 ? 's' : ''}! 🎉`, 'success');
+    } else {
+        showToast('Could not book — already taken', 'error');
+    }
 }
 
 // ===== DESK DRAG & DROP (Admin) =====
