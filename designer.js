@@ -247,10 +247,55 @@ const Designer = {
             return;
         }
         if (selectedIds.length > 1) {
+            const n = selectedIds.length;
             panel.innerHTML = `
-              <div class="ds-prop-row"><span class="ds-prop-label">Selected</span>
-                <span class="ds-prop-val">${selectedIds.length} objects</span></div>
-              <div class="ds-prop-actions">
+              <div class="ds-prop-row">
+                <span class="ds-prop-label">Selected</span>
+                <span class="ds-prop-val">${n} objects</span>
+              </div>
+              <div class="ds-align-section">
+                <div class="ds-align-title">Align</div>
+                <div class="ds-align-btns">
+                  <button class="ds-align-btn" title="Center horizontally (same Y)" onclick="Designer.alignCenterH()">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <line x1="2" y1="10" x2="18" y2="10"/>
+                      <rect x="4" y="6" width="4" height="8" rx="1"/>
+                      <rect x="12" y="4" width="4" height="12" rx="1"/>
+                    </svg>
+                    <span>H Center</span>
+                  </button>
+                  <button class="ds-align-btn" title="Center vertically (same X)" onclick="Designer.alignCenterV()">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <line x1="10" y1="2" x2="10" y2="18"/>
+                      <rect x="6" y="4" width="8" height="4" rx="1"/>
+                      <rect x="4" y="12" width="12" height="4" rx="1"/>
+                    </svg>
+                    <span>V Center</span>
+                  </button>
+                </div>
+                <div class="ds-align-title" style="margin-top:8px">Distribute</div>
+                <div class="ds-align-btns">
+                  <button class="ds-align-btn" title="Equal spacing horizontally" onclick="Designer.distributeH()">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <line x1="1" y1="4" x2="1" y2="16"/>
+                      <line x1="19" y1="4" x2="19" y2="16"/>
+                      <rect x="4" y="7" width="4" height="6" rx="1"/>
+                      <rect x="12" y="7" width="4" height="6" rx="1"/>
+                    </svg>
+                    <span>H Space</span>
+                  </button>
+                  <button class="ds-align-btn" title="Equal spacing vertically" onclick="Designer.distributeV()">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <line x1="4" y1="1" x2="16" y2="1"/>
+                      <line x1="4" y1="19" x2="16" y2="19"/>
+                      <rect x="7" y="4" width="6" height="4" rx="1"/>
+                      <rect x="7" y="12" width="6" height="4" rx="1"/>
+                    </svg>
+                    <span>V Space</span>
+                  </button>
+                </div>
+              </div>
+              <div class="ds-prop-actions" style="margin-top:8px">
                 <button class="btn-danger btn-sm" onclick="Designer.deleteSelected()">&#128465; Delete All</button>
               </div>`;
             return;
@@ -309,7 +354,61 @@ const Designer = {
         this.renderProperties();
     },
 
-    // ---- Object Creation ----
+    // ---- Alignment & Distribution ----
+
+    _selectedObjs() {
+        return this.state.objects.filter(o => this.state.selectedIds.includes(o.id));
+    },
+
+    _updateObjEl(obj) {
+        const el = document.getElementById(`dsobj-${obj.id}`);
+        if (el) el.style.cssText = `left:${obj.x}px;top:${obj.y}px;width:${obj.w}px;height:${obj.h}px;`;
+    },
+
+    // Align all selected objects so their vertical centers share the same Y
+    alignCenterH() {
+        const objs = this._selectedObjs();
+        if (objs.length < 2) return;
+        const avg = objs.reduce((s, o) => s + o.y + o.h / 2, 0) / objs.length;
+        objs.forEach(o => { o.y = Math.round(avg - o.h / 2); this._updateObjEl(o); });
+        this.renderProperties();
+    },
+
+    // Align all selected objects so their horizontal centers share the same X
+    alignCenterV() {
+        const objs = this._selectedObjs();
+        if (objs.length < 2) return;
+        const avg = objs.reduce((s, o) => s + o.x + o.w / 2, 0) / objs.length;
+        objs.forEach(o => { o.x = Math.round(avg - o.w / 2); this._updateObjEl(o); });
+        this.renderProperties();
+    },
+
+    // Distribute selected objects with equal horizontal gaps (anchors leftmost & rightmost)
+    distributeH() {
+        const objs = this._selectedObjs();
+        if (objs.length < 2) return;
+        objs.sort((a, b) => a.x - b.x);
+        const totalW = objs.reduce((s, o) => s + o.w, 0);
+        const span = (objs[objs.length - 1].x + objs[objs.length - 1].w) - objs[0].x;
+        const gap = Math.max(0, (span - totalW) / (objs.length - 1));
+        let cur = objs[0].x;
+        objs.forEach(o => { o.x = Math.round(cur); this._updateObjEl(o); cur += o.w + gap; });
+        this.renderProperties();
+    },
+
+    // Distribute selected objects with equal vertical gaps (anchors topmost & bottommost)
+    distributeV() {
+        const objs = this._selectedObjs();
+        if (objs.length < 2) return;
+        objs.sort((a, b) => a.y - b.y);
+        const totalH = objs.reduce((s, o) => s + o.h, 0);
+        const span = (objs[objs.length - 1].y + objs[objs.length - 1].h) - objs[0].y;
+        const gap = Math.max(0, (span - totalH) / (objs.length - 1));
+        let cur = objs[0].y;
+        objs.forEach(o => { o.y = Math.round(cur); this._updateObjEl(o); cur += o.h + gap; });
+        this.renderProperties();
+    },
+
 
     addObject(type, x, y) {
         const info = this.TYPES[type] || { w: 80, h: 60, label: 'New' };

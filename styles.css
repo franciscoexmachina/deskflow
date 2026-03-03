@@ -2341,3 +2341,54 @@ button.date-chip {
   color: #818cf8;
   pointer-events: none;
 }
+
+/* ===== ALIGNMENT / DISTRIBUTION BUTTONS ===== */
+.ds-align-section {
+  margin-top: 8px;
+}
+
+.ds-align-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
+.ds-align-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.ds-align-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 4px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 0.62rem;
+}
+
+.ds-align-btn svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent-primary);
+}
+
+.ds-align-btn:hover {
+  border-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text-primary);
+}
+
+.ds-align-btn:active {
+  transform: scale(0.95);
+}
