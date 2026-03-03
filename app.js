@@ -549,6 +549,12 @@ function openDeskModal(desk, deskBookings) {
     const bookableDates = viewDates.filter(d => !deskBookings[d]);
     const myBookedDates = viewDates.filter(d => deskBookings[d] && deskBookings[d].userId === currentUser.id);
 
+    // For non-admin users: further filter bookableDates to days they don't already
+    // have a booking on ANY desk (enforces 1 desk per day rule).
+    const availableDates = currentUser.role === 'admin'
+        ? bookableDates
+        : bookableDates.filter(d => !BookingAPI.userHasBookingOnDate(currentUser.id, d));
+
     // Always show Close button
     const closeBtn = document.createElement('button');
     closeBtn.className = 'btn-secondary';
@@ -593,12 +599,14 @@ function openDeskModal(desk, deskBookings) {
         });
         footerEl.appendChild(renameBtn);
     } else {
-        // Normal user Book button
-        if (bookableDates.length > 0) {
-            const existingCount = BookingAPI.countUserBookingsOnDates(currentUser.id, viewDates);
+        // Normal user Book button — only offer days with no existing booking anywhere
+        if (availableDates.length > 0) {
             const maxDays = currentUser.maxBookingDays || 2;
-            const canBook = Math.max(0, maxDays - existingCount);
-            const toBook = bookableDates.slice(0, canBook);
+            // Count how many distinct days the user has already booked (across all desks)
+            const bookedDayCount = BookingAPI.getBookingsForUser(currentUser.id)
+                .filter(b => viewDates.includes(b.dateStr)).length;
+            const remainingDays = Math.max(0, maxDays - bookedDayCount);
+            const toBook = availableDates.slice(0, remainingDays);
 
             if (toBook.length > 0) {
                 const bookBtn = document.createElement('button');
@@ -616,6 +624,12 @@ function openDeskModal(desk, deskBookings) {
                 limitMsg.textContent = `Booking limit (${currentUser.maxBookingDays || 2} days) reached`;
                 footerEl.appendChild(limitMsg);
             }
+        } else if (bookableDates.length > 0 && availableDates.length === 0) {
+            // Desk is free but user already has a booking on those days
+            const alreadyBookedMsg = document.createElement('span');
+            alreadyBookedMsg.style.cssText = 'font-size:0.8rem;color:var(--text-muted)';
+            alreadyBookedMsg.textContent = 'You already have a desk booked on those day(s)';
+            footerEl.appendChild(alreadyBookedMsg);
         }
         // Normal user Cancel button
         if (myBookedDates.length > 0) {
@@ -665,26 +679,53 @@ function executePendingUnbook() {
 
 async function handleBookDesk(deskId, dates, isUnbook, overrideUserId = null) {
     const userId = overrideUserId || currentUser.id;
+    const isAdmin = currentUser.role === 'admin';
 
     // Fetch the very latest bookings from Firebase before writing
-    // This catches conflicts from other users who booked in the last 30 seconds
     showToast('Checking availability\u2026', 'info');
     await CloudSync.fetchKey('df_bookings');
 
-    // Re-check: are these dates still free for this desk?
-    const conflicts = dates.filter(dateStr => {
+    // Guard 1: desk already taken by someone else on those dates?
+    const deskConflicts = dates.filter(dateStr => {
         const existing = BookingAPI.getBooking(currentFloorId, deskId, dateStr);
         return existing && existing.userId !== userId;
     });
-
-    if (conflicts.length > 0) {
+    if (deskConflicts.length > 0) {
         closeDeskModalDirect();
-        renderFloor(); // show the newly-fetched booked state
+        renderFloor();
         showToast('\u274c Desk just booked by someone else! Please choose another.', 'error');
         return;
     }
 
-    // All clear — proceed with booking
+    // Guard 2 (non-admin only): already have a booking on any of these days?
+    if (!isAdmin) {
+        const dayConflicts = dates.filter(d =>
+            BookingAPI.userHasBookingOnDate(userId, d) &&
+            !BookingAPI.getBooking(currentFloorId, deskId, d)
+        );
+        if (dayConflicts.length > 0) {
+            dates = dates.filter(d => !dayConflicts.includes(d));
+            if (dates.length === 0) {
+                closeDeskModalDirect();
+                renderFloor();
+                showToast('\u274c You already have a desk booked on those day(s).', 'error');
+                return;
+            }
+        }
+
+        // Guard 3: still within maxBookingDays limit?
+        const maxDays = currentUser.maxBookingDays || 2;
+        const alreadyBookedDays = BookingAPI.getBookingsForUser(userId).length;
+        const remaining = Math.max(0, maxDays - alreadyBookedDays);
+        dates = dates.slice(0, remaining);
+        if (dates.length === 0) {
+            closeDeskModalDirect();
+            showToast('\u274c Booking limit reached.', 'error');
+            return;
+        }
+    }
+
+    // All clear \u2014 proceed with booking
     let booked = 0;
     dates.forEach(dateStr => {
         if (BookingAPI.book(currentFloorId, deskId, dateStr, userId)) {

@@ -655,6 +655,16 @@ const BookingAPI = {
         }).length;
     },
 
+    // Returns true if the user already has ANY booking on this date (any floor, any desk).
+    // Used to enforce the "max 1 desk per day" rule for non-admin users.
+    userHasBookingOnDate(userId, dateStr) {
+        const all = this.getAll();
+        return Object.entries(all).some(([k, v]) => {
+            const parts = k.split('__');
+            return v.userId === userId && parts[parts.length - 1] === dateStr;
+        });
+    },
+
     removeAllForUser(userId) {
         const bookings = this.getAll();
         Object.keys(bookings).forEach(k => {
