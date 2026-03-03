@@ -128,11 +128,12 @@ const Designer = {
             this.state.selectedId = null;
         }
         this.renderToolbar();
-        this.render();
         this.renderProperties();
-        // Re-register palette/canvas (drag-drop only active in edit mode)
+        // setupPalette() clones the canvas (strips old listeners) — MUST run before render()
+        // so that render() adds fresh elements WITH listeners to the already-cloned canvas.
         this.setupPalette();
-        showToast(this.state.editMode ? '✏️ Edit mode — make your changes' : '🔒 Locked — changes saved', 'info');
+        this.render();
+        showToast(this.state.editMode ? '\u270f\ufe0f Edit mode \u2014 make your changes' : '\uD83D\uDD12 Locked \u2014 changes saved', 'info');
     },
 
     // ---- Floor Management ----
