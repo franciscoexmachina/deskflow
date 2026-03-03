@@ -529,6 +529,9 @@ const UserAPI = {
         const users = this.getAll();
         const idx = users.findIndex(u => u.id === id);
         if (idx === -1) return false;
+        if (updates.allowedFloors !== undefined) {
+            users[idx].allowedFloors = updates.allowedFloors;
+        }
         users[idx] = { ...users[idx], ...updates };
         if (updates.name) {
             users[idx].initials = updates.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);

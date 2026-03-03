@@ -284,14 +284,34 @@ function setupUI() {
         if (designerNav) designerNav.classList.add('hidden');
     }
 
+    // Safeguard: if current floor is not allowed for this user, switch to the first allowed floor
+    const allowedFloors = FloorAPI.getAll().filter(f => {
+        if (currentUser.role === 'admin') return true;
+        if (!currentUser.allowedFloors) return true; // Legacy support
+        return currentUser.allowedFloors.includes(f.id);
+    });
+
+    if (allowedFloors.length > 0) {
+        const isCurrentAllowed = allowedFloors.some(f => f.id === currentFloorId);
+        if (!isCurrentAllowed) {
+            currentFloorId = allowedFloors[0].id;
+        }
+    }
+
     // Build floor tabs
     buildFloorTabs();
 }
 
 function buildFloorTabs() {
-    const floors = FloorAPI.getAll();
+    const allFloors = FloorAPI.getAll();
+    const allowedFloors = allFloors.filter(f => {
+        if (currentUser.role === 'admin') return true;
+        if (!currentUser.allowedFloors) return true; // Legacy support
+        return currentUser.allowedFloors.includes(f.id);
+    });
+
     const tabsEl = document.getElementById('floor-tabs');
-    tabsEl.innerHTML = floors.map(f =>
+    tabsEl.innerHTML = allowedFloors.map(f =>
         `<button class="floor-tab${f.id === currentFloorId ? ' active' : ''}" 
       onclick="switchFloor('${f.id}')" id="ftab-${f.id}">${f.name}</button>`
     ).join('');
@@ -1597,7 +1617,36 @@ function openUserModal(userId = null) {
       <label>Max Booking Days <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400;">(days user can select at once; admins default 365)</span></label>
       <input type="number" id="modal-max-days" value="${user ? (user.maxBookingDays || 2) : 2}" min="1" max="365" />
     </div>
+
+    <!-- User Floor Permissions -->
+    <div id="modal-floor-permissions-container" class="field-group ${user && user.role === 'admin' ? 'hidden' : ''}">
+      <label>Allowed Floors <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400;">(Required for non-admins)</span></label>
+      <div id="modal-floor-list" style="max-height: 120px; overflow-y: auto; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; margin-top: 8px;">
+        ${FloorAPI.getAll().map(f => {
+        const checked = !user || !user.allowedFloors || user.allowedFloors.includes(f.id);
+        return `
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer; font-size: 0.88rem;">
+              <input type="checkbox" class="modal-floor-checkbox" value="${f.id}" ${checked ? 'checked' : ''} />
+              ${f.name}
+            </label>
+          `;
+    }).join('')}
+      </div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:5px;">Users can only see and book desks on checked floors. Admins always see all floors.</div>
+    </div>
   `;
+
+    const roleSelect = document.getElementById('modal-role');
+    if (roleSelect) {
+        roleSelect.addEventListener('change', (e) => {
+            const container = document.getElementById('modal-floor-permissions-container');
+            if (e.target.value === 'admin') {
+                container.classList.add('hidden');
+            } else {
+                container.classList.remove('hidden');
+            }
+        });
+    }
 
     document.getElementById('modal-footer').innerHTML = `
     <button class="btn-secondary" onclick="closeModalDirect()">Cancel</button>
@@ -1617,9 +1666,11 @@ function saveUser(userId) {
 
     if (!name) { showToast('Name is required', 'error'); return; }
 
+    const allowedFloors = Array.from(document.querySelectorAll('.modal-floor-checkbox:checked')).map(cb => cb.value);
+
     if (userId) {
         // Edit
-        const updates = { name, role };
+        const updates = { name, role, allowedFloors };
         if (username) updates.username = username;
         if (password) updates.password = password;
         const maxDaysInput = document.getElementById('modal-max-days');
@@ -1632,7 +1683,7 @@ function saveUser(userId) {
         if (UserAPI.getByUsername(username)) { showToast('Username already exists', 'error'); return; }
         const maxDaysInput = document.getElementById('modal-max-days');
         const maxBookingDays = maxDaysInput ? Math.max(1, parseInt(maxDaysInput.value) || 2) : 2;
-        UserAPI.add({ username, password, name, role, maxBookingDays });
+        UserAPI.add({ username, password, name, role, maxBookingDays, allowedFloors });
         showToast('User created', 'success');
     }
 
