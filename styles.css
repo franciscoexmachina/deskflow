@@ -2264,3 +2264,47 @@ button.date-chip {
   text-align: center;
   pointer-events: none;
 }
+
+/* Area always stays in background — never boost z-index on hover */
+.dsobj-area {
+  z-index: 1 !important;
+}
+
+.dsobj-area:hover {
+  z-index: 1 !important;
+}
+
+/* Non-area objects boost on hover so they sit above areas */
+.dsobj:not(.dsobj-area):hover {
+  z-index: 10;
+}
+
+/* Rubber-band selection rectangle */
+.ds-sel-box {
+  position: absolute;
+  display: none;
+  border: 1.5px dashed var(--accent-primary);
+  background: rgba(99, 102, 241, 0.08);
+  pointer-events: none;
+  z-index: 999;
+  border-radius: 3px;
+}
+
+/* Add / Delete floor buttons */
+.ds-add-floor-btn {
+  color: var(--accent-green) !important;
+  border-color: var(--accent-green) !important;
+}
+
+.ds-add-floor-btn:hover {
+  background: rgba(34, 197, 94, 0.1) !important;
+}
+
+.ds-del-floor-btn {
+  color: var(--accent-red, #ef4444) !important;
+  border-color: var(--accent-red, #ef4444) !important;
+}
+
+.ds-del-floor-btn:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+}

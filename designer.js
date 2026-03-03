@@ -16,10 +16,11 @@ const Designer = {
     state: {
         floorId: null,
         objects: [],
-        selectedId: null,
-        _drag: null,   // { id, sx, sy, ox, oy }
-        _resize: null, // { id, handle, sx, sy, ox, oy, ow, oh }
-        _palType: null,// type being dragged from palette
+        selectedId: null,   // primary selected (shown in properties)
+        selectedIds: [],    // all selected (for multi-move/delete)
+        _drag: null,        // { id, sx, sy, starts:[{id,ox,oy}] }
+        _resize: null,      // { id, handle, sx, sy, ox, oy, ow, oh }
+        _selBox: null,      // rubber-band: { sx, sy, ex, ey, canvasRect }
     },
 
     // ---- Lifecycle ----
@@ -27,8 +28,10 @@ const Designer = {
     init(floorId) {
         this.state.floorId = floorId;
         this.state.selectedId = null;
+        this.state.selectedIds = [];
         this.state._drag = null;
         this.state._resize = null;
+        this.state._selBox = null;
         this.loadFromData();
         this.renderFloorTabs();
         this.render();
@@ -67,32 +70,59 @@ const Designer = {
         const allDesks = DeskAPI.getAll();
         allDesks[fid] = desks;
         DeskAPI.save(allDesks);
-        showToast('Floor saved! \u2713', 'success');
+        showToast('Floor saved \u2713', 'success');
     },
 
-    // ---- UI: Floor Tabs ----
+    // ---- Floor Management ----
 
     renderFloorTabs() {
         const el = document.getElementById('designer-floor-tabs');
         if (!el) return;
-        el.innerHTML = FloorAPI.getAll().map(f =>
+        const tabs = FloorAPI.getAll().map(f =>
             `<button class="floor-tab-btn${f.id === this.state.floorId ? ' active' : ''}"
                 onclick="Designer.switchFloor('${f.id}')">${f.name}</button>`
         ).join('');
+        el.innerHTML = tabs;
     },
 
     switchFloor(fid) {
         this.state.floorId = fid;
+        currentFloorId = fid;
         this.init(fid);
     },
 
-    // ---- UI: Canvas Render ----
+    createFloor() {
+        const name = prompt('New floor name:', 'Floor ' + (FloorAPI.getAll().length + 1));
+        if (!name || !name.trim()) return;
+        const newFloor = FloorAPI.add(name.trim());
+        this.switchFloor(newFloor.id);
+        // Rebuild floor tabs in main floor view too
+        if (typeof buildFloorTabs === 'function') buildFloorTabs();
+        showToast(`Floor "${newFloor.name}" created`, 'success');
+    },
+
+    deleteFloor() {
+        const floors = FloorAPI.getAll();
+        if (floors.length <= 1) { showToast('Cannot delete the last floor', 'error'); return; }
+        const floor = floors.find(f => f.id === this.state.floorId);
+        if (!confirm(`Delete "${floor ? floor.name : 'this floor'}"? All desks and bookings on this floor will be lost.`)) return;
+        const ok = FloorAPI.delete(this.state.floorId);
+        if (ok) {
+            const remaining = FloorAPI.getAll();
+            this.switchFloor(remaining[0].id);
+            if (typeof buildFloorTabs === 'function') buildFloorTabs();
+            showToast('Floor deleted', 'info');
+        }
+    },
+
+    // ---- Render ----
 
     render() {
         const canvas = document.getElementById('designer-canvas');
         if (!canvas) return;
-        canvas.innerHTML = '';
-        // Draw order: areas (back) \u2192 walls \u2192 boxes \u2192 desks (front)
+        // Remove all objects but keep the selection box el if present
+        canvas.querySelectorAll('.dsobj').forEach(el => el.remove());
+        // Draw order: areas (back) -> walls -> boxes -> desks (front)
         const order = ['area', 'wall', 'box', 'desk'];
         [...this.state.objects]
             .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type))
@@ -100,7 +130,7 @@ const Designer = {
     },
 
     createEl(obj) {
-        const isSelected = this.state.selectedId === obj.id;
+        const isSelected = this.state.selectedIds.includes(obj.id);
         const el = document.createElement('div');
         el.id = `dsobj-${obj.id}`;
         el.className = `dsobj dsobj-${obj.type}${isSelected ? ' dsobj-selected' : ''}`;
@@ -125,13 +155,14 @@ const Designer = {
             el.appendChild(icon);
         }
 
+        // Resize handles (not for desks)
         if (this.TYPES[obj.type]?.resizable) {
             ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(dir => {
                 const h = document.createElement('div');
                 h.className = `dsobj-handle dsobj-handle-${dir}`;
                 h.addEventListener('mousedown', e => {
                     e.stopPropagation(); e.preventDefault();
-                    this.selectObj(obj.id);
+                    this.selectSingle(obj.id);
                     this.startResize(e, obj.id, dir);
                 });
                 el.appendChild(h);
@@ -141,9 +172,18 @@ const Designer = {
         el.addEventListener('mousedown', e => {
             if (e.target.classList.contains('dsobj-handle')) return;
             e.preventDefault();
-            this.selectObj(obj.id);
+            e.stopPropagation();
+            // Ctrl/Shift: toggle in multi-selection; otherwise single-select
+            if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                this.toggleSelect(obj.id);
+            } else {
+                if (!this.state.selectedIds.includes(obj.id)) {
+                    this.selectSingle(obj.id);
+                }
+            }
             this.startDrag(e, obj.id);
         });
+
         el.addEventListener('dblclick', e => {
             e.stopPropagation();
             if (obj.type === 'wall') return;
@@ -154,29 +194,69 @@ const Designer = {
         return el;
     },
 
-    // ---- Selection & Properties ----
+    // ---- Selection ----
 
-    selectObj(id) {
-        const prev = document.getElementById(`dsobj-${this.state.selectedId}`);
-        if (prev) prev.classList.remove('dsobj-selected');
-        this.state.selectedId = id;
-        const el = document.getElementById(`dsobj-${id}`);
-        if (el) el.classList.add('dsobj-selected');
+    selectSingle(id) {
+        this.state.selectedIds = id ? [id] : [];
+        this.state.selectedId = id || null;
+        this._refreshSelectionStyles();
+        this.renderProperties();
+    },
+
+    toggleSelect(id) {
+        if (this.state.selectedIds.includes(id)) {
+            this.state.selectedIds = this.state.selectedIds.filter(x => x !== id);
+            this.state.selectedId = this.state.selectedIds[this.state.selectedIds.length - 1] || null;
+        } else {
+            this.state.selectedIds.push(id);
+            this.state.selectedId = id;
+        }
+        this._refreshSelectionStyles();
+        this.renderProperties();
+    },
+
+    selectMultiple(ids) {
+        this.state.selectedIds = ids;
+        this.state.selectedId = ids[ids.length - 1] || null;
+        this._refreshSelectionStyles();
         this.renderProperties();
     },
 
     deselectAll() {
-        this.selectObj(null);
+        this.state.selectedIds = [];
+        this.state.selectedId = null;
+        this._refreshSelectionStyles();
+        this.renderProperties();
     },
+
+    _refreshSelectionStyles() {
+        document.querySelectorAll('.dsobj').forEach(el => {
+            const id = el.id.replace('dsobj-', '');
+            el.classList.toggle('dsobj-selected', this.state.selectedIds.includes(id));
+        });
+    },
+
+    // ---- Properties Panel ----
 
     renderProperties() {
         const panel = document.getElementById('designer-properties');
         if (!panel) return;
-        const obj = this.state.objects.find(o => o.id === this.state.selectedId);
-        if (!obj) {
-            panel.innerHTML = `<p class="ds-hint">Click an object to select it,<br>or drag one from the palette.</p>`;
+        const { selectedIds } = this.state;
+        if (selectedIds.length === 0) {
+            panel.innerHTML = `<p class="ds-hint">Click an object to select it,<br>or drag from the palette.</p>`;
             return;
         }
+        if (selectedIds.length > 1) {
+            panel.innerHTML = `
+              <div class="ds-prop-row"><span class="ds-prop-label">Selected</span>
+                <span class="ds-prop-val">${selectedIds.length} objects</span></div>
+              <div class="ds-prop-actions">
+                <button class="btn-danger btn-sm" onclick="Designer.deleteSelected()">&#128465; Delete All</button>
+              </div>`;
+            return;
+        }
+        const obj = this.state.objects.find(o => o.id === this.state.selectedId);
+        if (!obj) { panel.innerHTML = ''; return; }
         const names = { area: 'Area', desk: 'Desk', wall: 'Wall', box: 'Box' };
         panel.innerHTML = `
             <div class="ds-prop-row">
@@ -200,7 +280,7 @@ const Designer = {
             </div>` : ''}
             <div class="ds-prop-actions">
                 ${obj.type !== 'wall' ? `<button class="btn-ghost btn-sm" onclick="Designer.applyLabel()">Apply</button>` : ''}
-                <button class="btn-danger btn-sm" onclick="Designer.deleteSelected()">\u{1F5D1} Delete</button>
+                <button class="btn-danger btn-sm" onclick="Designer.deleteSelected()">&#128465; Delete</button>
             </div>`;
         const input = document.getElementById('ds-label-input');
         if (input) {
@@ -220,8 +300,10 @@ const Designer = {
     },
 
     deleteSelected() {
-        if (!this.state.selectedId) return;
-        this.state.objects = this.state.objects.filter(o => o.id !== this.state.selectedId);
+        if (this.state.selectedIds.length === 0) return;
+        const del = new Set(this.state.selectedIds);
+        this.state.objects = this.state.objects.filter(o => !del.has(o.id));
+        this.state.selectedIds = [];
         this.state.selectedId = null;
         this.render();
         this.renderProperties();
@@ -242,15 +324,19 @@ const Designer = {
         };
         this.state.objects.push(obj);
         this.render();
-        this.selectObj(obj.id);
+        this.selectSingle(obj.id);
     },
 
     // ---- Drag & Resize ----
 
     startDrag(e, id) {
-        const obj = this.state.objects.find(o => o.id === id);
-        if (!obj) return;
-        this.state._drag = { id, sx: e.clientX, sy: e.clientY, ox: obj.x, oy: obj.y };
+        // Record initial positions of all selected objects for group drag
+        const selectedObjs = this.state.objects.filter(o => this.state.selectedIds.includes(o.id));
+        this.state._drag = {
+            id,
+            sx: e.clientX, sy: e.clientY,
+            starts: selectedObjs.map(o => ({ id: o.id, ox: o.x, oy: o.y })),
+        };
     },
 
     startResize(e, id, handle) {
@@ -259,35 +345,100 @@ const Designer = {
         this.state._resize = { id, handle, sx: e.clientX, sy: e.clientY, ox: obj.x, oy: obj.y, ow: obj.w, oh: obj.h };
     },
 
+    // ---- Rubber-band Selection ----
+
+    startSelBox(e) {
+        const canvas = document.getElementById('designer-canvas');
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        this.state._selBox = {
+            sx: e.clientX - rect.left,
+            sy: e.clientY - rect.top,
+            ex: e.clientX - rect.left,
+            ey: e.clientY - rect.top,
+            canvasRect: rect,
+        };
+        // Create or reuse selection rect element
+        let selEl = document.getElementById('ds-sel-box');
+        if (!selEl) {
+            selEl = document.createElement('div');
+            selEl.id = 'ds-sel-box';
+            selEl.className = 'ds-sel-box';
+            canvas.appendChild(selEl);
+        }
+        selEl.style.display = 'block';
+        this._updateSelBoxEl();
+    },
+
+    _updateSelBoxEl() {
+        const s = this.state._selBox;
+        if (!s) return;
+        const el = document.getElementById('ds-sel-box');
+        if (!el) return;
+        const x = Math.min(s.sx, s.ex), y = Math.min(s.sy, s.ey);
+        const w = Math.abs(s.ex - s.sx), h = Math.abs(s.ey - s.sy);
+        el.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;display:block;`;
+    },
+
+    endSelBox() {
+        const s = this.state._selBox;
+        this.state._selBox = null;
+        const el = document.getElementById('ds-sel-box');
+        if (el) el.style.display = 'none';
+        if (!s) return;
+        const x1 = Math.min(s.sx, s.ex), y1 = Math.min(s.sy, s.ey);
+        const x2 = Math.max(s.sx, s.ex), y2 = Math.max(s.sy, s.ey);
+        // If selection is tiny, treat as click-to-deselect
+        if (x2 - x1 < 4 && y2 - y1 < 4) { this.deselectAll(); return; }
+        // Find all objects overlapping the selection rectangle
+        const hit = this.state.objects.filter(o =>
+            o.x < x2 && o.x + o.w > x1 && o.y < y2 && o.y + o.h > y1
+        ).map(o => o.id);
+        if (hit.length > 0) this.selectMultiple(hit); else this.deselectAll();
+    },
+
+    // ---- Mouse Events ----
+
     onMouseMove(e) {
-        const { _drag, _resize } = this.state;
-        if (_drag) {
-            const obj = this.state.objects.find(o => o.id === _drag.id);
-            if (obj) {
-                obj.x = Math.max(0, Math.min(this.CANVAS_W - obj.w, _drag.ox + e.clientX - _drag.sx));
-                obj.y = Math.max(0, Math.min(this.CANVAS_H - obj.h, _drag.oy + e.clientY - _drag.sy));
-                const el = document.getElementById(`dsobj-${obj.id}`);
+        if (this.state._drag) {
+            const d = this.state._drag;
+            const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+            d.starts.forEach(({ id, ox, oy }) => {
+                const obj = this.state.objects.find(o => o.id === id);
+                if (!obj) return;
+                obj.x = Math.max(0, Math.min(this.CANVAS_W - obj.w, ox + dx));
+                obj.y = Math.max(0, Math.min(this.CANVAS_H - obj.h, oy + dy));
+                const el = document.getElementById(`dsobj-${id}`);
                 if (el) { el.style.left = obj.x + 'px'; el.style.top = obj.y + 'px'; }
-                const posEl = document.getElementById('ds-pos-val');
-                if (posEl) posEl.textContent = `${Math.round(obj.x)}, ${Math.round(obj.y)}`;
+            });
+            const posEl = document.getElementById('ds-pos-val');
+            if (posEl) {
+                const primary = this.state.objects.find(o => o.id === d.id);
+                if (primary) posEl.textContent = `${Math.round(primary.x)}, ${Math.round(primary.y)}`;
             }
         }
-        if (_resize) {
-            const obj = this.state.objects.find(o => o.id === _resize.id);
+        if (this.state._resize) {
+            const r = this.state._resize, obj = this.state.objects.find(o => o.id === r.id);
             if (obj) {
-                const dx = e.clientX - _resize.sx, dy = e.clientY - _resize.sy;
-                const MIN = 30;
-                let nx = _resize.ox, ny = _resize.oy, nw = _resize.ow, nh = _resize.oh;
-                if (_resize.handle.includes('e')) nw = Math.max(MIN, _resize.ow + dx);
-                if (_resize.handle.includes('s')) nh = Math.max(MIN, _resize.oh + dy);
-                if (_resize.handle.includes('w')) { nw = Math.max(MIN, _resize.ow - dx); nx = _resize.ox + _resize.ow - nw; }
-                if (_resize.handle.includes('n')) { nh = Math.max(MIN, _resize.oh - dy); ny = _resize.oy + _resize.oh - nh; }
+                const dx = e.clientX - r.sx, dy = e.clientY - r.sy, MIN = 30;
+                let nx = r.ox, ny = r.oy, nw = r.ow, nh = r.oh;
+                if (r.handle.includes('e')) nw = Math.max(MIN, r.ow + dx);
+                if (r.handle.includes('s')) nh = Math.max(MIN, r.oh + dy);
+                if (r.handle.includes('w')) { nw = Math.max(MIN, r.ow - dx); nx = r.ox + r.ow - nw; }
+                if (r.handle.includes('n')) { nh = Math.max(MIN, r.oh - dy); ny = r.oy + r.oh - nh; }
                 obj.x = nx; obj.y = ny; obj.w = nw; obj.h = nh;
-                const el = document.getElementById(`dsobj-${obj.id}`);
-                if (el) { el.style.cssText = `left:${nx}px;top:${ny}px;width:${nw}px;height:${nh}px;`; }
+                const el = document.getElementById(`dsobj-${r.id}`);
+                if (el) el.style.cssText = `left:${nx}px;top:${ny}px;width:${nw}px;height:${nh}px;`;
                 const sizeEl = document.getElementById('ds-size-val');
                 if (sizeEl) sizeEl.textContent = `${Math.round(nw)} \xd7 ${Math.round(nh)}`;
             }
+        }
+        if (this.state._selBox) {
+            const canvas = document.getElementById('designer-canvas');
+            const rect = canvas ? canvas.getBoundingClientRect() : this.state._selBox.canvasRect;
+            this.state._selBox.ex = e.clientX - rect.left;
+            this.state._selBox.ey = e.clientY - rect.top;
+            this._updateSelBoxEl();
         }
     },
 
@@ -297,9 +448,12 @@ const Designer = {
             this.state._resize = null;
             this.renderProperties();
         }
+        if (this.state._selBox) {
+            this.endSelBox();
+        }
     },
 
-    // ---- Palette Drag Setup ----
+    // ---- Palette & Canvas Events ----
 
     setupPalette() {
         document.querySelectorAll('.ds-palette-item').forEach(item => {
@@ -317,25 +471,30 @@ const Designer = {
             const type = e.dataTransfer.getData('text/plain') || this.state._palType;
             if (!type) return;
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            this.addObject(type, x, y);
+            this.addObject(type, e.clientX - rect.left, e.clientY - rect.top);
         });
+        // Canvas background click: start rubber-band selection
         canvas.addEventListener('mousedown', e => {
-            if (e.target === canvas) this.deselectAll();
+            if (e.target !== canvas) return; // only fire on background
+            e.preventDefault();
+            this.startSelBox(e);
         });
     },
 
-    // ---- Global Event Listeners (called once) ----
+    // ---- Global Listeners (called once) ----
 
     setupGlobalListeners() {
         document.addEventListener('mousemove', e => this.onMouseMove(e));
         document.addEventListener('mouseup', () => this.onMouseUp());
         document.addEventListener('keydown', e => {
             if ((e.key === 'Delete' || e.key === 'Backspace') &&
-                this.state.selectedId &&
+                this.state.selectedIds.length > 0 &&
                 !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
                 this.deleteSelected();
+            }
+            if ((e.key === 'a' || e.key === 'A') && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault(); // Ctrl+A = select all
+                this.selectMultiple(this.state.objects.map(o => o.id));
             }
         });
         this._listenersSetup = true;
